@@ -1,2 +1,101 @@
 # apps-only-filter
-Android apps-only filter (Device Owner launcher)
+
+Android app that turns a phone into an "allowed apps only" device. It runs as **Device Owner**,
+lets the customer pick the allowed apps once during setup, then hides everything else and acts
+as the home screen.
+
+Android 10+ (minSdk 29). Kotlin, no third-party libraries.
+
+## Step 1 status (this version)
+
+What it does once locked:
+
+- Shows a simple home screen with only the allowed apps (and the phone / SMS apps if chosen).
+- Hides every other app with an icon, every browser, and every other home-screen app.
+  The system WebView is kept so allowed apps that show web content still work.
+- Suspends the Play Store (customer can't open it) so it can keep **updating allowed apps** in the background.
+- Suspends Settings (customer can't open it).
+- Blocks installing from unknown sources, uninstalling apps, and force-stop / clear data.
+- Blocks uninstalling this app and the allowed apps.
+- New apps that show up later (for example a remote install from the Play website) are hidden
+  automatically whenever the home screen is shown, after a reboot, or right away while the app is running.
+- The allowed list can't be changed on the phone. (Changes will come from the support portal in a later step.)
+
+No invasive permissions: no contacts, microphone, camera or location. It only asks to see the list
+of installed apps (`QUERY_ALL_PACKAGES`) and to start after a reboot.
+
+Not in this step: factory reset / safe mode / USB debugging / FRP protection (step 2), Windows
+installer (step 3), payment gate (step 4), portals (step 5).
+
+## Get the APK
+
+Every push builds a debug APK on GitHub Actions: open the **Actions** tab, pick the latest
+"Build APK" run, and download the `apps-only-debug-apk` artifact (a zip containing `app-debug.apk`).
+
+To build yourself: install Android Studio (or the Android SDK + JDK 17) and run `./gradlew assembleDebug`.
+The APK ends up in `app/build/outputs/apk/debug/app-debug.apk`.
+
+## Test on a phone
+
+Use a test phone, not your daily phone.
+
+1. On the phone: **Settings > About phone**, tap **Build number** 7 times, then turn on
+   **Developer options > USB debugging**.
+2. Remove **every account** from the phone (Settings > Accounts / Passwords & accounts),
+   including Google. Android refuses to set a Device Owner while accounts exist.
+   (Step 3's installer will handle this automatically.) You can add the Google account back after step 4 below.
+3. Connect the phone by USB and install the app (`-t` is needed because debug builds are test-only):
+
+   ```
+   adb install -t app-debug.apk
+   ```
+
+4. Make it Device Owner:
+
+   ```
+   adb shell dpm set-device-owner com.appsonly.filter/.AdminReceiver
+   ```
+
+   Expected output: `Success: Device owner set to package ComponentInfo{com.appsonly.filter/...}`.
+   If it says there are already accounts or users on the device, go back to step 2.
+
+5. Open **Apps Only** on the phone, switch phone calls / text messages on or off, tick the allowed
+   apps, tap **Lock phone** and confirm. Press the Home button: only the allowed apps remain.
+
+## Remove it from a test phone (developer only)
+
+Debug builds include a developer unlock that unhides everything, clears all restrictions and
+removes Device Owner. Only the computer's `adb` can trigger it (it is protected by a permission
+normal apps can't get), and it is **not included in release builds**.
+
+```
+adb shell am broadcast -a com.appsonly.filter.DEV_UNLOCK -n com.appsonly.filter/.dev.DevUnlockReceiver
+adb uninstall com.appsonly.filter
+```
+
+Logs while testing: `adb logcat -s AppsOnly`.
+
+Last resort if the broadcast doesn't work: `adb shell dpm remove-active-admin com.appsonly.filter/.AdminReceiver`
+removes Device Owner, but apps that were hidden stay hidden until the app is reinstalled,
+made Device Owner again and unlocked with the broadcast above (or the phone is factory reset).
+
+## Known limits to check while testing
+
+- **Wi-Fi and other settings**: Settings is blocked after locking, so connect Wi-Fi before locking.
+- **Calls switched off** hides the phone app; on some phones this may also hide the incoming-call screen.
+- Some phone makers protect certain system apps; those may stay visible. Please note any you see.
+- USB debugging is still allowed in this step (it's needed for testing); step 2 locks it.
+
+## Project layout
+
+```
+app/src/main/java/com/appsonly/filter/
+  MainActivity.kt   setup screen + locked home screen
+  LockPolicy.kt     applies the lock (restrictions, hide/suspend, home screen)
+  AppScanner.kt     finds launchable apps, browsers, launchers, phone/SMS apps, keyboards
+  Prefs.kt          saved choices
+  FilterApp.kt      re-applies the lock when apps are installed
+  BootReceiver.kt   re-applies the lock after reboot
+  AdminReceiver.kt  Device Owner receiver
+app/src/debug/      developer unlock (debug builds only)
+```
