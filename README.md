@@ -14,7 +14,10 @@ What it does once locked:
 - Hides every other app with an icon, every browser, and every other home-screen app.
   The system WebView is kept so allowed apps that show web content still work.
 - Suspends the Play Store (customer can't open it) so it can keep **updating allowed apps** in the background.
-- Suspends Settings (customer can't open it).
+- Keeps **Settings** available (Wi-Fi, Bluetooth, sound, display, etc.), with the risky parts locked:
+  factory reset, safe mode, adding or removing users, adding or removing accounts, VPN,
+  date/time, certificates and network reset. Developer options and USB debugging are also
+  blocked in release builds (left open in debug builds so you can test with adb).
 - Blocks installing from unknown sources, uninstalling apps, and force-stop / clear data.
 - Blocks uninstalling this app and the allowed apps.
 - New apps that show up later (for example a remote install from the Play website) are hidden
@@ -24,7 +27,7 @@ What it does once locked:
 No invasive permissions: no contacts, microphone, camera or location. It only asks to see the list
 of installed apps (`QUERY_ALL_PACKAGES`) and to start after a reboot.
 
-Not in this step: factory reset / safe mode / USB debugging / FRP protection (step 2), Windows
+Not in this step: FRP and the rest of the tamper protection (step 2), Windows
 installer (step 3), payment gate (step 4), portals (step 5).
 
 ## Get the APK
@@ -81,7 +84,8 @@ made Device Owner again and unlocked with the broadcast above (or the phone is f
 
 ## Known limits to check while testing
 
-- **Wi-Fi and other settings**: Settings is blocked after locking, so connect Wi-Fi before locking.
+- **Accounts**: adding accounts is blocked after locking, so add the Google account (needed for
+  Play Store updates) **before** tapping Lock.
 - **Calls switched off** hides the phone app; on some phones this may also hide the incoming-call screen.
 - Some phone makers protect certain system apps; those may stay visible. Please note any you see.
 - USB debugging is still allowed in this step (it's needed for testing); step 2 locks it.

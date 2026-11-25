@@ -22,7 +22,30 @@ object LockPolicy {
         UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES_GLOBALLY,
         UserManager.DISALLOW_UNINSTALL_APPS,
         UserManager.DISALLOW_APPS_CONTROL, // no force-stop, clear data or disable from Settings
+        // Settings stays open (Wi-Fi, Bluetooth, sound, display...). These keep it from
+        // being used to get around the filter:
+        UserManager.DISALLOW_FACTORY_RESET,
+        UserManager.DISALLOW_SAFE_BOOT,
+        UserManager.DISALLOW_ADD_USER,
+        UserManager.DISALLOW_REMOVE_USER,
+        UserManager.DISALLOW_MODIFY_ACCOUNTS,
+        UserManager.DISALLOW_CONFIG_VPN,
+        UserManager.DISALLOW_CONFIG_DATE_TIME,
+        UserManager.DISALLOW_CONFIG_CREDENTIALS,
+        UserManager.DISALLOW_NETWORK_RESET,
     )
+
+    /**
+     * Blocks Developer options and USB debugging. Left off in debug (test) builds,
+     * because testing and the developer unlock need adb.
+     */
+    const val DEBUG_RESTRICTION = UserManager.DISALLOW_DEBUGGING_FEATURES
+
+    private fun isTestBuild(ctx: Context) =
+        (ctx.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+    private fun activeRestrictions(ctx: Context) =
+        if (isTestBuild(ctx)) RESTRICTIONS else RESTRICTIONS + DEBUG_RESTRICTION
 
     fun dpm(ctx: Context): DevicePolicyManager =
         ctx.getSystemService(DevicePolicyManager::class.java)
@@ -32,6 +55,7 @@ object LockPolicy {
     /** Packages the customer can see and use once locked. */
     fun visiblePackages(ctx: Context, cfg: LockConfig): Set<String> {
         val result = cfg.allowedPackages.toMutableSet()
+        result += AppScanner.settingsPackage(ctx) // always available; risky parts are restricted
         if (cfg.allowPhone) result += AppScanner.phonePackages(ctx)
         if (cfg.allowSms) result += AppScanner.smsPackages(ctx)
         // Browsers are never allowed, even if they also act as a dialer or similar.
@@ -46,7 +70,7 @@ object LockPolicy {
         val admin = AdminReceiver.component(ctx)
 
         // 1. User restrictions.
-        for (r in RESTRICTIONS) {
+        for (r in activeRestrictions(ctx)) {
             try { dpm.addUserRestriction(admin, r) } catch (e: Exception) { Log.w(TAG, "restriction $r", e) }
         }
 
@@ -57,19 +81,17 @@ object LockPolicy {
         // 3. Hide / suspend everything that isn't allowed.
         val visible = visiblePackages(ctx, cfg)
         val untouchable = AppScanner.untouchable(ctx)
-        val settings = AppScanner.settingsPackage(ctx)
         val webView = AppScanner.webViewPackage()
         val targets = AppScanner.launchable(ctx) + AppScanner.browsers(ctx) +
-            AppScanner.homeApps(ctx) + AppScanner.PLAY_STORE + settings
+            AppScanner.homeApps(ctx) + AppScanner.PLAY_STORE
 
         val toSuspend = mutableListOf<String>()
         for (pkg in targets) {
             if (pkg in visible || pkg in untouchable) continue
             // The Play Store stays installed and running (suspended, so the customer can't
             // open it) so it can keep updating the allowed apps in the background.
-            // Settings is suspended rather than hidden because system dialogs live in it.
             // If a browser is also the WebView provider, suspend it so web content keeps working.
-            if (pkg == AppScanner.PLAY_STORE || pkg == settings || pkg == webView) {
+            if (pkg == AppScanner.PLAY_STORE || pkg == webView) {
                 toSuspend += pkg
             } else {
                 hide(dpm, admin, pkg)
@@ -130,7 +152,7 @@ object LockPolicy {
             } catch (e: Exception) { Log.w(TAG, "restore $pkg", e) }
         }
         try { dpm.setPackagesSuspended(admin, all.toTypedArray(), false) } catch (e: Exception) { Log.w(TAG, "unsuspend", e) }
-        for (r in RESTRICTIONS) {
+        for (r in RESTRICTIONS + DEBUG_RESTRICTION) {
             try { dpm.clearUserRestriction(admin, r) } catch (e: Exception) { Log.w(TAG, "clear $r", e) }
         }
         dpm.clearPackagePersistentPreferredActivities(admin, ctx.packageName)
