@@ -1,104 +1,195 @@
 package com.appsonly.filter
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
-import android.app.admin.DevicePolicyManager
-import android.content.ActivityNotFoundException
+import android.bluetooth.BluetoothManager
 import android.content.Intent
 import android.graphics.Typeface
+import android.media.AudioManager
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.provider.Settings
+import android.text.InputType
+import android.view.View
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 
 /**
- * Our own Settings screen. It offers only the safe, everyday settings, each opening the
- * matching page of the phone's Settings directly. The full Settings app has no icon.
- * Risky options (factory reset, users, VPN, date/time, ...) stay blocked by Device Owner
- * restrictions even if someone navigates around inside one of these pages.
+ * Our own Settings screen. Every control here is done by this app itself (as Device Owner),
+ * never by opening the phone's Settings app, which stays hidden.
  */
+@SuppressLint("UseSwitchCompatOrMaterialCode", "MissingPermission")
 class SettingsActivity : Activity() {
 
-    private data class Item(val title: String, val subtitle: String, val intent: () -> Intent)
-
-    private val items = listOf(
-        Item("Wi-Fi", "Connect to a network") { Intent(Settings.ACTION_WIFI_SETTINGS) },
-        Item("Mobile data", "Data, roaming, SIM") { Intent(Settings.ACTION_DATA_ROAMING_SETTINGS) },
-        Item("Bluetooth", "Pair headphones, car, watch") { Intent(Settings.ACTION_BLUETOOTH_SETTINGS) },
-        Item("Sound & volume", "Ringtone, vibration, volume") { Intent(Settings.ACTION_SOUND_SETTINGS) },
-        Item("Display", "Brightness, font size, dark mode") { Intent(Settings.ACTION_DISPLAY_SETTINGS) },
-        Item("Wallpaper", "Change the background") { Intent(Intent.ACTION_SET_WALLPAPER) },
-        Item("Screen lock", "PIN, pattern or fingerprint") { Intent(DevicePolicyManager.ACTION_SET_NEW_PASSWORD) },
-        Item("Battery", "Battery use and saver") { Intent(Intent.ACTION_POWER_USAGE_SUMMARY) },
-        Item("Language", "Phone language") { Intent(Settings.ACTION_LOCALE_SETTINGS) },
-        Item("Keyboard", "Keyboard options") { Intent(Settings.ACTION_INPUT_METHOD_SETTINGS) },
-        Item("Accessibility", "Text size, hearing, vision") { Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS) },
-    )
-
-    private val handler = Handler(Looper.getMainLooper())
-
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val col = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(32), dp(20), dp(24))
-        }
-        col.addView(TextView(this).apply {
-            text = "Settings"; textSize = 24f; typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, 0, 0, dp(12))
-        })
-        for (item in items) {
-            if (item.intent().resolveActivity(packageManager) == null) continue
-            col.addView(row(item.title, item.subtitle) { open(item.intent()) })
-        }
-        col.addView(row("Add account", "Gmail, Outlook and other email accounts") { addAccount() })
-        setContentView(ScrollView(this).apply { addView(col) })
-    }
+    private lateinit var col: LinearLayout
 
     override fun onResume() {
         super.onResume()
-        // Back from the add-account flow (or anything else): lock account changes again.
-        LockPolicy.closeAccountWindow(this)
+        AccountFlow.end(this)
+        build()
     }
 
-    private fun row(title: String, subtitle: String, onClick: () -> Unit) =
-        LinearLayout(this).apply {
+    private fun build() {
+        col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(14), 0, dp(14))
-            isClickable = true
-            setBackgroundResource(android.R.drawable.list_selector_background)
-            addView(TextView(this@SettingsActivity).apply { text = title; textSize = 18f })
-            addView(TextView(this@SettingsActivity).apply { text = subtitle; textSize = 14f; alpha = 0.6f })
-            setOnClickListener { onClick() }
+            setPadding(dp(20), dp(32), dp(20), dp(32))
         }
+        title("Settings", 24f)
+        wifiSection()
+        bluetoothSection()
+        soundSection()
+        displaySection()
+        lockSection()
+        accountSection()
+        setContentView(ScrollView(this).apply { addView(col) })
+    }
 
-    private fun open(intent: Intent) {
-        try {
-            startActivity(intent)
-        } catch (e: ActivityNotFoundException) {
-            Toast.makeText(this, "Not available on this phone", Toast.LENGTH_SHORT).show()
-        } catch (e: SecurityException) {
-            Toast.makeText(this, "Not available on this phone", Toast.LENGTH_SHORT).show()
+    // ---------- building blocks ----------
+
+    private fun title(s: String, size: Float = 18f) = col.addView(TextView(this).apply {
+        text = s; textSize = size; typeface = Typeface.DEFAULT_BOLD
+        setPadding(0, dp(18), 0, dp(4))
+    })
+
+    private fun note(s: String) = col.addView(TextView(this).apply {
+        text = s; textSize = 14f; alpha = 0.65f
+    })
+
+    private fun row(text: String, onClick: () -> Unit) = col.addView(TextView(this).apply {
+        this.text = text; textSize = 16f
+        setPadding(0, dp(12), 0, dp(12))
+        setBackgroundResource(android.R.drawable.list_selector_background)
+        setOnClickListener { onClick() }
+    })
+
+    private fun switch(text: String, checked: Boolean, onChange: (Boolean) -> Unit) = col.addView(Switch(this).apply {
+        this.text = text; textSize = 16f; isChecked = checked
+        setPadding(0, dp(8), 0, dp(8))
+        setOnCheckedChangeListener { _, b -> onChange(b) }
+    })
+
+    private fun slider(label: String, max: Int, value: Int, onChange: (Int) -> Unit) {
+        col.addView(TextView(this).apply { text = label; textSize = 15f; setPadding(0, dp(8), 0, 0) })
+        col.addView(SeekBar(this).apply {
+            this.max = max; progress = value
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(s: SeekBar, p: Int, fromUser: Boolean) { if (fromUser) onChange(p) }
+                override fun onStartTrackingTouch(s: SeekBar) {}
+                override fun onStopTrackingTouch(s: SeekBar) {}
+            })
+        })
+    }
+
+    private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+
+    // ---------- sections ----------
+
+    private fun wifiSection() {
+        title("Wi-Fi")
+        row("Wi-Fi networks  ›") { startActivity(Intent(this, WifiActivity::class.java)) }
+    }
+
+    private fun bluetoothSection() {
+        val adapter = getSystemService(BluetoothManager::class.java)?.adapter ?: return
+        title("Bluetooth")
+        @Suppress("DEPRECATION")
+        switch("Bluetooth", adapter.isEnabled) { on ->
+            val ok = try { if (on) adapter.enable() else adapter.disable() } catch (e: Exception) { false }
+            if (!ok) toast("Couldn't change Bluetooth on this phone")
+        }
+        val paired = try { adapter.bondedDevices?.map { it.name ?: it.address } } catch (e: SecurityException) { null }
+        if (!paired.isNullOrEmpty()) note("Paired: " + paired.joinToString(", "))
+    }
+
+    private fun soundSection() {
+        val am = getSystemService(AudioManager::class.java)
+        title("Sound")
+        for ((label, stream) in listOf(
+            "Ringtone & notifications" to AudioManager.STREAM_RING,
+            "Media" to AudioManager.STREAM_MUSIC,
+            "Alarms" to AudioManager.STREAM_ALARM,
+        )) {
+            slider(label, am.getStreamMaxVolume(stream), am.getStreamVolume(stream)) { v ->
+                try { am.setStreamVolume(stream, v, 0) } catch (e: SecurityException) {
+                    toast("Turn on Do Not Disturb access to silence the ringer")
+                }
+            }
+        }
+        switch("Vibrate instead of ring", am.ringerMode == AudioManager.RINGER_MODE_VIBRATE) { on ->
+            try { am.ringerMode = if (on) AudioManager.RINGER_MODE_VIBRATE else AudioManager.RINGER_MODE_NORMAL }
+            catch (e: SecurityException) { toast("Not allowed on this phone") }
         }
     }
 
-    private fun addAccount() {
-        AlertDialog.Builder(this)
-            .setTitle("Add an account")
-            .setMessage("Adding accounts is unlocked for up to 10 minutes. Come back here when you're done and it locks again.")
+    private fun displaySection() {
+        title("Display")
+        val auto = DeviceControls.readSystemInt(this, Settings.System.SCREEN_BRIGHTNESS_MODE, 0) ==
+            Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
+        switch("Automatic brightness", auto) { DeviceControls.setAutoBrightness(this, it) }
+        slider("Brightness", 255, DeviceControls.readSystemInt(this, Settings.System.SCREEN_BRIGHTNESS, 128)) {
+            DeviceControls.setBrightness(this, it)
+        }
+        val choices = listOf(30_000 to "30 seconds", 60_000 to "1 minute", 120_000 to "2 minutes",
+            300_000 to "5 minutes", 600_000 to "10 minutes")
+        val current = DeviceControls.readSystemInt(this, Settings.System.SCREEN_OFF_TIMEOUT, 60_000)
+        val currentLabel = choices.firstOrNull { it.first == current }?.second ?: "${current / 1000} seconds"
+        row("Screen turns off after: $currentLabel  ›") {
+            AlertDialog.Builder(this).setTitle("Screen turns off after")
+                .setItems(choices.map { it.second }.toTypedArray()) { _, i ->
+                    DeviceControls.setScreenTimeout(this, choices[i].first); build()
+                }.show()
+        }
+    }
+
+    private fun lockSection() {
+        title("Screen lock")
+        if (!DeviceControls.pinReady(this)) {
+            note("Unlock the phone once more, then you can change the PIN here.")
+            return
+        }
+        row("Set or change PIN  ›") { askPin() }
+        row("Remove PIN") {
+            AlertDialog.Builder(this).setTitle("Remove the PIN?")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Remove") { _, _ ->
+                    toast(if (DeviceControls.setPin(this, "")) "PIN removed" else "Couldn't remove the PIN")
+                }.show()
+        }
+    }
+
+    private fun askPin() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "4 or more digits"
+        }
+        AlertDialog.Builder(this).setTitle("New PIN").setView(input)
             .setNegativeButton("Cancel", null)
-            .setPositiveButton("Continue") { _, _ ->
-                LockPolicy.openAccountWindow(this)
-                // Safety net: lock again after the window even if the customer never comes back.
-                handler.postDelayed({ (application as FilterApp).enforceAsync() }, LockPolicy.ACCOUNT_WINDOW_MS + 1000)
-                open(Intent(Settings.ACTION_ADD_ACCOUNT))
+            .setPositiveButton("Save") { _, _ ->
+                val pin = input.text.toString()
+                when {
+                    pin.length < 4 -> toast("Use at least 4 digits")
+                    DeviceControls.setPin(this, pin) -> toast("PIN saved")
+                    else -> toast("Couldn't set the PIN")
+                }
+            }.show()
+    }
+
+    private fun accountSection() {
+        title("Google account")
+        val names = AccountFlow.googleAccountNames(this)
+        note(if (names.isEmpty()) "No Google account on this phone." else names.joinToString("\n"))
+        row("Add Google account  ›") {
+            AccountFlow.addGoogleAccount(this) { added ->
+                toast(if (added) "Account added" else "No account added")
+                build()
             }
-            .show()
+        }
+        note("Only Google sign-in opens. It can reach Google's sign-in pages and nothing else.")
     }
 }

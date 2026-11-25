@@ -8,13 +8,29 @@
     <!-- Re-apply the lock after a reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Our own Settings screen (the phone's Settings app is hidden). -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Android only shows the Wi-Fi network list to apps with location access.
+         Used for nothing else. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" tools:targetApi="s" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
     <application
         android:name=".FilterApp"
         android:allowBackup="false"
         android:label="@string/app_name"
         android:icon="@android:drawable/ic_lock_lock"
         android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
-        android:supportsRtl="true">
+        android:supportsRtl="true"
+        android:directBootAware="true">
 
         <!-- Setup screen before locking, home screen after. -->
         <activity
@@ -24,6 +40,7 @@
             android:stateNotNeeded="true"
             android:clearTaskOnLaunch="true"
             android:excludeFromRecents="true"
+            android:directBootAware="true"
             android:screenOrientation="unspecified">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -36,11 +53,20 @@
             </intent-filter>
         </activity>
 
-        <!-- Our own Settings screen with only the safe, everyday settings. -->
-        <activity
-            android:name=".SettingsActivity"
+        <!-- Our own Settings screen and Wi-Fi screen (real controls, no system Settings). -->
+        <activity android:name=".SettingsActivity" android:exported="false" android:label="Settings" />
+        <activity android:name=".WifiActivity" android:exported="false" android:label="Wi-Fi" />
+
+        <!-- Always-on web filter: carries only DNS lookups and blocks sites not on the allow-list. -->
+        <service
+            android:name=".FilterVpnService"
             android:exported="false"
-            android:label="Settings" />
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+            <meta-data android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON" android:value="true" />
+        </service>
 
         <receiver
             android:name=".AdminReceiver"
@@ -56,8 +82,10 @@
 
         <receiver
             android:name=".BootReceiver"
-            android:exported="false">
+            android:exported="false"
+            android:directBootAware="true">
             <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>

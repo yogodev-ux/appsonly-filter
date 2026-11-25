@@ -36,7 +36,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        LockPolicy.closeAccountWindow(this)
+        AccountFlow.end(this)
         render()
     }
 

@@ -17,7 +17,10 @@ object Prefs {
     private const val KEY_PHONE = "allow_phone"
     private const val KEY_SMS = "allow_sms"
 
-    private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+    // Device-protected storage: readable right after a reboot, before the first unlock,
+    // so the home screen and lock work from the start.
+    private fun sp(ctx: Context) =
+        ctx.createDeviceProtectedStorageContext().getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
     fun load(ctx: Context): LockConfig {
         val p = sp(ctx)
@@ -39,13 +42,15 @@ object Prefs {
             .commit()
     }
 
-    private const val KEY_ACCOUNT_WINDOW = "account_window_until"
+    private const val KEY_PIN_TOKEN = "pin_token"
 
-    /** Until when (epoch ms) adding an account is temporarily allowed. 0 = closed. */
-    fun accountWindowUntil(ctx: Context): Long = sp(ctx).getLong(KEY_ACCOUNT_WINDOW, 0L)
-
-    fun setAccountWindowUntil(ctx: Context, until: Long) {
-        sp(ctx).edit().putLong(KEY_ACCOUNT_WINDOW, until).commit()
+    /** Random token that lets us set or remove the screen-lock PIN as Device Owner. */
+    fun pinToken(ctx: Context): ByteArray {
+        val p = sp(ctx)
+        p.getString(KEY_PIN_TOKEN, null)?.let { return android.util.Base64.decode(it, 0) }
+        val token = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+        p.edit().putString(KEY_PIN_TOKEN, android.util.Base64.encodeToString(token, 0)).commit()
+        return token
     }
 
     fun clear(ctx: Context) {

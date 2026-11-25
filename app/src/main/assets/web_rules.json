@@ -1,0 +1,30 @@
+{
+  "_readme": "Internet allow-lists for the web filter. A rule is a host name; '*.example.com' also matches every sub-domain, and '*' inside a label matches any letters or digits (clients*.google.com). Anything not listed is blocked. Debug builds log every blocked name: adb logcat -s AppsOnlyFilter",
+
+  "google_core": [
+    "accounts.google.com", "accounts.youtube.com",
+    "android.clients.google.com", "clients*.google.com", "clientservices.googleapis.com",
+    "*.googleapis.com", "*.gstatic.com", "*.googleusercontent.com", "*.ggpht.com",
+    "mtalk.google.com", "alt*-mtalk.google.com", "connectivitycheck.gstatic.com",
+    "android.googleapis.com", "play.googleapis.com", "*.gvt1.com", "*.gvt2.com", "*.gvt3.com",
+    "time.android.com"
+  ],
+
+  "play_store": [
+    "play.google.com", "play-lh.googleusercontent.com", "play-fe.googleapis.com",
+    "*.googleapis.com", "*.gvt1.com", "*.ggpht.com", "*.gstatic.com",
+    "android.clients.google.com", "clients*.google.com", "accounts.google.com"
+  ],
+
+  "common_for_allowed_apps": [
+    "*.googleapis.com", "*.gstatic.com", "app-measurement.com",
+    "*.crashlytics.com", "*.firebaseio.com", "*.firebaseapp.com"
+  ],
+
+  "apps": {
+    "com.whatsapp": ["whatsapp.com", "*.whatsapp.com", "whatsapp.net", "*.whatsapp.net"],
+    "com.google.android.gm": ["mail.google.com", "inbox.google.com", "*.googleusercontent.com", "imap.gmail.com", "smtp.gmail.com"],
+    "com.google.android.apps.maps": ["maps.google.com", "*.googleapis.com", "*.gstatic.com", "*.ggpht.com"],
+    "com.waze": ["waze.com", "*.waze.com"]
+  }
+}

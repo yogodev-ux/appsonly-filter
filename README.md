@@ -14,25 +14,32 @@ What it does once locked:
 - Hides every other app with an icon, every browser, and every other home-screen app.
   The system WebView is kept so allowed apps that show web content still work.
 - Suspends the Play Store (customer can't open it) so it can keep **updating allowed apps** in the background.
-- Has its **own Settings screen** (a "Settings" tile on the home screen) with only the everyday
-  settings: Wi-Fi, mobile data, Bluetooth, sound, display, wallpaper, screen lock, battery,
-  language, keyboard, accessibility. Each opens that page of the phone's Settings directly.
-  The phone's full Settings app gets no icon. It can't be hidden completely, because those
-  pages live inside it.
-- **Add account** (Gmail, Outlook, ...) from our Settings screen: account changes are unlocked
-  for up to 10 minutes, then locked again as soon as the customer comes back (or the time runs out).
-- Risky options stay locked even if someone navigates around inside a Settings page:
-  factory reset, safe mode, adding or removing users, changing accounts (outside the add-account
-  window), VPN, date/time, certificates and network reset. Developer options and USB debugging
-  are also blocked in release builds (left open in debug builds so you can test with adb).
+- **Hides the phone's Settings app** and replaces it with our own Settings screen (the "Settings"
+  tile). Every control there is done by this app itself, so there are no links into the system:
+  Wi-Fi (on/off, network list, connect with password, forget), Bluetooth on/off, volume,
+  vibrate, brightness, screen timeout, set/remove screen-lock PIN, add Google account.
+- **Add Google account** opens only Google's sign-in. Account changes are unlocked only while
+  that sign-in is open and locked again the moment it finishes or is cancelled.
+- **Always-on web filter** (a local VPN that carries only DNS lookups, so normal traffic is not
+  slowed down). Each app may only look up the web addresses on its allow-list in
+  `app/src/main/assets/web_rules.json`; anything else gets "no such site". This blocks in-app
+  browsers, links inside Google sign-in, and help pages. Google sign-in (Google Play services)
+  may only reach Google's sign-in/infrastructure addresses. With `STRICT_FOR_ALL_APPS = true`
+  (in `WebFilter.kt`) an allowed app with no list gets no internet until one is added.
+  Debug builds log every blocked address: `adb logcat -s AppsOnlyFilter`.
+- Second wall, in case any part of Settings is ever reachable: factory reset, safe mode,
+  adding/removing users, changing accounts, VPN, private DNS, date/time, certificates and
+  network reset are blocked. Developer options and USB debugging are also blocked in release
+  builds (left open in debug builds so you can test with adb).
 - Blocks installing from unknown sources, uninstalling apps, and force-stop / clear data.
 - Blocks uninstalling this app and the allowed apps.
 - New apps that show up later (for example a remote install from the Play website) are hidden
   automatically whenever the home screen is shown, after a reboot, or right away while the app is running.
 - The allowed list can't be changed on the phone. (Changes will come from the support portal in a later step.)
 
-No invasive permissions: no contacts, microphone, camera or location. It only asks to see the list
-of installed apps (`QUERY_ALL_PACKAGES`) and to start after a reboot.
+No contacts, microphone or camera access. **Location** is granted to the app only because
+Android shows the Wi-Fi network list only to apps with location access; it is not used for
+anything else. Bluetooth permissions are for the Bluetooth switch.
 
 Not in this step: FRP and the rest of the tamper protection (step 2), Windows
 installer (step 3), payment gate (step 4), portals (step 5).
@@ -91,20 +98,29 @@ made Device Owner again and unlocked with the broadcast above (or the phone is f
 
 ## Known limits to check while testing
 
-- **Accounts**: the Play Store needs a Google account to update allowed apps. Add one before
-  locking, or later with Settings > Add account.
-- The Google sign-in screen has a few "Learn more" style links that open small web pages.
-  Check whether they let you browse further on your phone.
+- Pairing a **new** Bluetooth device may not work, because the pairing pop-up belongs to the
+  hidden Settings app. Already-paired devices keep working.
+- Hotel/airport Wi-Fi with a sign-in page won't work (that page is a browser).
+- Enterprise (username + password) Wi-Fi isn't supported yet.
+- Apps that hard-code their own DNS or use DNS-over-HTTPS skip the web filter. WebView-based
+  in-app browsers use the normal system lookup, so they are filtered.
+- If Google sign-in fails, check the blocked list in logcat; some sign-ins need extra Google
+  addresses added to `google_core`.
+- The per-app lists in `web_rules.json` are starting points; check them with the logcat output.
 - **Calls switched off** hides the phone app; on some phones this may also hide the incoming-call screen.
-- Some phone makers protect certain system apps; those may stay visible. Please note any you see.
-- USB debugging is still allowed in this step (it's needed for testing); step 2 locks it.
 
 ## Project layout
 
 ```
 app/src/main/java/com/appsonly/filter/
   MainActivity.kt   setup screen + locked home screen
-  SettingsActivity.kt  our own Settings screen + add-account window
+  SettingsActivity.kt  our own Settings screen (Bluetooth, sound, display, PIN, account)
+  WifiActivity.kt   Wi-Fi list / connect / forget
+  DeviceControls.kt Device Owner powers behind the Settings screen
+  AccountFlow.kt    add-Google-account flow (unlocks accounts only while sign-in is open)
+  WebFilter.kt      per-app web allow-lists
+  FilterVpnService.kt  always-on DNS filter
+app/src/main/assets/web_rules.json  the allow-lists
   LockPolicy.kt     applies the lock (restrictions, hide/suspend, home screen)
   AppScanner.kt     finds launchable apps, browsers, launchers, phone/SMS apps, keyboards
   Prefs.kt          saved choices

@@ -22,8 +22,8 @@ object LockPolicy {
         UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES_GLOBALLY,
         UserManager.DISALLOW_UNINSTALL_APPS,
         UserManager.DISALLOW_APPS_CONTROL, // no force-stop, clear data or disable from Settings
-        // Settings stays open (Wi-Fi, Bluetooth, sound, display...). These keep it from
-        // being used to get around the filter:
+        // The real Settings app is hidden; these are a second wall in case any part of it
+        // is ever reachable:
         UserManager.DISALLOW_FACTORY_RESET,
         UserManager.DISALLOW_SAFE_BOOT,
         UserManager.DISALLOW_ADD_USER,
@@ -33,6 +33,7 @@ object LockPolicy {
         UserManager.DISALLOW_CONFIG_DATE_TIME,
         UserManager.DISALLOW_CONFIG_CREDENTIALS,
         UserManager.DISALLOW_NETWORK_RESET,
+        UserManager.DISALLOW_CONFIG_PRIVATE_DNS, // keep DNS going through our web filter
     )
 
     /**
@@ -55,9 +56,6 @@ object LockPolicy {
     /** Packages the customer can see and use once locked. */
     fun visiblePackages(ctx: Context, cfg: LockConfig): Set<String> {
         val result = cfg.allowedPackages.toMutableSet()
-        // The real Settings app stays installed (its pages are needed by our own Settings
-        // screen) but gets no icon on the home screen. Its risky parts are restricted.
-        result += AppScanner.settingsPackage(ctx)
         if (cfg.allowPhone) result += AppScanner.phonePackages(ctx)
         if (cfg.allowSms) result += AppScanner.smsPackages(ctx)
         // Browsers are never allowed, even if they also act as a dialer or similar.
@@ -71,11 +69,10 @@ object LockPolicy {
         val dpm = dpm(ctx)
         val admin = AdminReceiver.component(ctx)
 
-        // 1. User restrictions. Account changes stay allowed only while an
-        //    "Add account" window opened from our Settings screen is still running.
-        val accountWindowOpen = System.currentTimeMillis() < Prefs.accountWindowUntil(ctx)
+        // 1. User restrictions. Account changes stay allowed only while the Google
+        //    sign-in started from our Settings screen is open.
         for (r in activeRestrictions(ctx)) {
-            if (r == UserManager.DISALLOW_MODIFY_ACCOUNTS && accountWindowOpen) continue
+            if (r == UserManager.DISALLOW_MODIFY_ACCOUNTS && AccountFlow.active) continue
             try { dpm.addUserRestriction(admin, r) } catch (e: Exception) { Log.w(TAG, "restriction $r", e) }
         }
 
@@ -87,8 +84,9 @@ object LockPolicy {
         val visible = visiblePackages(ctx, cfg)
         val untouchable = AppScanner.untouchable(ctx)
         val webView = AppScanner.webViewPackage()
+        // The real Settings app is hidden too; our own Settings screen replaces it.
         val targets = AppScanner.launchable(ctx) + AppScanner.browsers(ctx) +
-            AppScanner.homeApps(ctx) + AppScanner.PLAY_STORE
+            AppScanner.homeApps(ctx) + AppScanner.PLAY_STORE + AppScanner.settingsPackage(ctx)
 
         val toSuspend = mutableListOf<String>()
         for (pkg in targets) {
@@ -112,33 +110,17 @@ object LockPolicy {
             failed.filter { it != webView }.forEach { hide(dpm, admin, it) }
         }
 
-        // 4. Allowed apps stay put: make sure they are visible and can't be uninstalled.
+        // 4. Device Owner extras for our own Settings screen and web filter.
+        DeviceControls.prepare(ctx)
+        WebFilter.makeAlwaysOn(ctx)
+
+        // 5. Allowed apps stay put: make sure they are visible and can't be uninstalled.
         for (pkg in visible) {
             try {
                 if (dpm.isApplicationHidden(admin, pkg)) dpm.setApplicationHidden(admin, pkg, false)
                 dpm.setUninstallBlocked(admin, pkg, true)
             } catch (e: Exception) { Log.w(TAG, "allow $pkg", e) }
         }
-    }
-
-    /** How long the "Add account" window stays open at most. */
-    const val ACCOUNT_WINDOW_MS = 10 * 60 * 1000L
-
-    /** Temporarily lets the customer add an account (e.g. Gmail). Closed again by [closeAccountWindow]. */
-    fun openAccountWindow(ctx: Context) {
-        Prefs.setAccountWindowUntil(ctx, System.currentTimeMillis() + ACCOUNT_WINDOW_MS)
-        try {
-            dpm(ctx).clearUserRestriction(AdminReceiver.component(ctx), UserManager.DISALLOW_MODIFY_ACCOUNTS)
-        } catch (e: Exception) { Log.w(TAG, "open account window", e) }
-    }
-
-    fun closeAccountWindow(ctx: Context) {
-        if (Prefs.accountWindowUntil(ctx) == 0L) return
-        Prefs.setAccountWindowUntil(ctx, 0L)
-        if (!Prefs.load(ctx).locked || !isDeviceOwner(ctx)) return
-        try {
-            dpm(ctx).addUserRestriction(AdminReceiver.component(ctx), UserManager.DISALLOW_MODIFY_ACCOUNTS)
-        } catch (e: Exception) { Log.w(TAG, "close account window", e) }
     }
 
     private fun hide(dpm: DevicePolicyManager, admin: ComponentName, pkg: String) {
@@ -181,6 +163,7 @@ object LockPolicy {
             try { dpm.clearUserRestriction(admin, r) } catch (e: Exception) { Log.w(TAG, "clear $r", e) }
         }
         dpm.clearPackagePersistentPreferredActivities(admin, ctx.packageName)
+        try { dpm.setAlwaysOnVpnPackage(admin, null, false) } catch (e: Exception) { Log.w(TAG, "vpn off", e) }
         Prefs.clear(ctx)
         dpm.clearDeviceOwnerApp(ctx.packageName)
     }
