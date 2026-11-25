@@ -39,6 +39,15 @@ object Prefs {
             .commit()
     }
 
+    private const val KEY_ACCOUNT_WINDOW = "account_window_until"
+
+    /** Until when (epoch ms) adding an account is temporarily allowed. 0 = closed. */
+    fun accountWindowUntil(ctx: Context): Long = sp(ctx).getLong(KEY_ACCOUNT_WINDOW, 0L)
+
+    fun setAccountWindowUntil(ctx: Context, until: Long) {
+        sp(ctx).edit().putLong(KEY_ACCOUNT_WINDOW, until).commit()
+    }
+
     fun clear(ctx: Context) {
         sp(ctx).edit().clear().commit()
     }

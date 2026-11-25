@@ -14,10 +14,17 @@ What it does once locked:
 - Hides every other app with an icon, every browser, and every other home-screen app.
   The system WebView is kept so allowed apps that show web content still work.
 - Suspends the Play Store (customer can't open it) so it can keep **updating allowed apps** in the background.
-- Keeps **Settings** available (Wi-Fi, Bluetooth, sound, display, etc.), with the risky parts locked:
-  factory reset, safe mode, adding or removing users, adding or removing accounts, VPN,
-  date/time, certificates and network reset. Developer options and USB debugging are also
-  blocked in release builds (left open in debug builds so you can test with adb).
+- Has its **own Settings screen** (a "Settings" tile on the home screen) with only the everyday
+  settings: Wi-Fi, mobile data, Bluetooth, sound, display, wallpaper, screen lock, battery,
+  language, keyboard, accessibility. Each opens that page of the phone's Settings directly.
+  The phone's full Settings app gets no icon. It can't be hidden completely, because those
+  pages live inside it.
+- **Add account** (Gmail, Outlook, ...) from our Settings screen: account changes are unlocked
+  for up to 10 minutes, then locked again as soon as the customer comes back (or the time runs out).
+- Risky options stay locked even if someone navigates around inside a Settings page:
+  factory reset, safe mode, adding or removing users, changing accounts (outside the add-account
+  window), VPN, date/time, certificates and network reset. Developer options and USB debugging
+  are also blocked in release builds (left open in debug builds so you can test with adb).
 - Blocks installing from unknown sources, uninstalling apps, and force-stop / clear data.
 - Blocks uninstalling this app and the allowed apps.
 - New apps that show up later (for example a remote install from the Play website) are hidden
@@ -84,8 +91,10 @@ made Device Owner again and unlocked with the broadcast above (or the phone is f
 
 ## Known limits to check while testing
 
-- **Accounts**: adding accounts is blocked after locking, so add the Google account (needed for
-  Play Store updates) **before** tapping Lock.
+- **Accounts**: the Play Store needs a Google account to update allowed apps. Add one before
+  locking, or later with Settings > Add account.
+- The Google sign-in screen has a few "Learn more" style links that open small web pages.
+  Check whether they let you browse further on your phone.
 - **Calls switched off** hides the phone app; on some phones this may also hide the incoming-call screen.
 - Some phone makers protect certain system apps; those may stay visible. Please note any you see.
 - USB debugging is still allowed in this step (it's needed for testing); step 2 locks it.
@@ -95,6 +104,7 @@ made Device Owner again and unlocked with the broadcast above (or the phone is f
 ```
 app/src/main/java/com/appsonly/filter/
   MainActivity.kt   setup screen + locked home screen
+  SettingsActivity.kt  our own Settings screen + add-account window
   LockPolicy.kt     applies the lock (restrictions, hide/suspend, home screen)
   AppScanner.kt     finds launchable apps, browsers, launchers, phone/SMS apps, keyboards
   Prefs.kt          saved choices

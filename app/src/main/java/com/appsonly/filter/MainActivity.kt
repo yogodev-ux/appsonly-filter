@@ -36,6 +36,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        LockPolicy.closeAccountWindow(this)
         render()
     }
 
@@ -168,23 +169,26 @@ class MainActivity : Activity() {
     // ---------- state 3: locked home screen ----------
 
     private fun showHome(cfg: LockConfig) {
-        val entries = LockPolicy.visiblePackages(this, cfg)
-            .filter { packageManager.getLaunchIntentForPackage(it) != null }
-            .map { AppEntry.of(this, it) }
-            .sortedBy { it.label.lowercase() }
+        val realSettings = AppScanner.settingsPackage(this)
+        val entries = listOf(AppEntry(SETTINGS_TILE, "Settings")) +
+            LockPolicy.visiblePackages(this, cfg)
+                .filter { it != realSettings && packageManager.getLaunchIntentForPackage(it) != null }
+                .map { AppEntry.of(this, it) }
+                .sortedBy { it.label.lowercase() }
 
         val col = column().apply { setBackgroundColor(Color.rgb(245, 246, 248)) }
         col.addView(text("Apps Only", 14f).apply { gravity = Gravity.CENTER; setTextColor(Color.GRAY) },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
-        if (entries.isEmpty()) {
-            col.addView(text("No apps are allowed on this phone.", 18f).apply { gravity = Gravity.CENTER })
-        }
         val grid = GridView(this).apply {
             numColumns = 4
             verticalSpacing = dp(16)
             adapter = HomeAdapter(this@MainActivity, entries)
             setOnItemClickListener { _, _, pos, _ ->
+                if (entries[pos].packageName == SETTINGS_TILE) {
+                    startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+                    return@setOnItemClickListener
+                }
                 val launch = packageManager.getLaunchIntentForPackage(entries[pos].packageName)
                 if (launch == null) {
                     Toast.makeText(this@MainActivity, "This app isn't available", Toast.LENGTH_SHORT).show()
@@ -221,7 +225,15 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        fun icon(ctx: Context, pkg: String, sizeDp: Int): Drawable? = try {
+        /** Home-screen tile that opens our own Settings screen. */
+        const val SETTINGS_TILE = "#settings"
+
+        fun icon(ctx: Context, pkg: String, sizeDp: Int): Drawable? = if (pkg == SETTINGS_TILE) {
+            ctx.getDrawable(android.R.drawable.ic_menu_preferences)?.also {
+                val px = (sizeDp * ctx.resources.displayMetrics.density).toInt()
+                it.setBounds(0, 0, px, px)
+            }
+        } else try {
             ctx.packageManager.getApplicationIcon(pkg).also {
                 val px = (sizeDp * ctx.resources.displayMetrics.density).toInt()
                 it.setBounds(0, 0, px, px)

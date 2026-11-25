@@ -36,6 +36,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Our own Settings screen with only the safe, everyday settings. -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:label="Settings" />
+
         <receiver
             android:name=".AdminReceiver"
             android:exported="true"

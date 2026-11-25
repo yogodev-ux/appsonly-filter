@@ -55,7 +55,9 @@ object LockPolicy {
     /** Packages the customer can see and use once locked. */
     fun visiblePackages(ctx: Context, cfg: LockConfig): Set<String> {
         val result = cfg.allowedPackages.toMutableSet()
-        result += AppScanner.settingsPackage(ctx) // always available; risky parts are restricted
+        // The real Settings app stays installed (its pages are needed by our own Settings
+        // screen) but gets no icon on the home screen. Its risky parts are restricted.
+        result += AppScanner.settingsPackage(ctx)
         if (cfg.allowPhone) result += AppScanner.phonePackages(ctx)
         if (cfg.allowSms) result += AppScanner.smsPackages(ctx)
         // Browsers are never allowed, even if they also act as a dialer or similar.
@@ -69,8 +71,11 @@ object LockPolicy {
         val dpm = dpm(ctx)
         val admin = AdminReceiver.component(ctx)
 
-        // 1. User restrictions.
+        // 1. User restrictions. Account changes stay allowed only while an
+        //    "Add account" window opened from our Settings screen is still running.
+        val accountWindowOpen = System.currentTimeMillis() < Prefs.accountWindowUntil(ctx)
         for (r in activeRestrictions(ctx)) {
+            if (r == UserManager.DISALLOW_MODIFY_ACCOUNTS && accountWindowOpen) continue
             try { dpm.addUserRestriction(admin, r) } catch (e: Exception) { Log.w(TAG, "restriction $r", e) }
         }
 
@@ -114,6 +119,26 @@ object LockPolicy {
                 dpm.setUninstallBlocked(admin, pkg, true)
             } catch (e: Exception) { Log.w(TAG, "allow $pkg", e) }
         }
+    }
+
+    /** How long the "Add account" window stays open at most. */
+    const val ACCOUNT_WINDOW_MS = 10 * 60 * 1000L
+
+    /** Temporarily lets the customer add an account (e.g. Gmail). Closed again by [closeAccountWindow]. */
+    fun openAccountWindow(ctx: Context) {
+        Prefs.setAccountWindowUntil(ctx, System.currentTimeMillis() + ACCOUNT_WINDOW_MS)
+        try {
+            dpm(ctx).clearUserRestriction(AdminReceiver.component(ctx), UserManager.DISALLOW_MODIFY_ACCOUNTS)
+        } catch (e: Exception) { Log.w(TAG, "open account window", e) }
+    }
+
+    fun closeAccountWindow(ctx: Context) {
+        if (Prefs.accountWindowUntil(ctx) == 0L) return
+        Prefs.setAccountWindowUntil(ctx, 0L)
+        if (!Prefs.load(ctx).locked || !isDeviceOwner(ctx)) return
+        try {
+            dpm(ctx).addUserRestriction(AdminReceiver.component(ctx), UserManager.DISALLOW_MODIFY_ACCOUNTS)
+        } catch (e: Exception) { Log.w(TAG, "close account window", e) }
     }
 
     private fun hide(dpm: DevicePolicyManager, admin: ComponentName, pkg: String) {
