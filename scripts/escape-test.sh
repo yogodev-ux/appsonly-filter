@@ -254,6 +254,7 @@ probe "Web search" --es action android.intent.action.WEB_SEARCH
 probe "Settings" --es action android.settings.SETTINGS
 probe "Google settings (Play services)" --es cmp com.google.android.gms/.app.settings.GoogleSettingsLink
 probe "Google account (Play services)" --es action com.google.android.gms.accountsettings.action.VIEW_SETTINGS
+probe "Google Help (Play services, shows web pages)" --es cmp com.google.android.gms/.googlehelp.helpactivities.HelpActivity
 probe "Share sheet" --es action android.intent.action.SEND --es type text/plain
 probe "File picker" --es action android.intent.action.GET_CONTENT --es type "*/*"
 

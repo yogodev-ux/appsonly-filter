@@ -39,14 +39,32 @@ class ScreenGuard : AccessibilityService() {
         val title = event.text.joinToString(" ").trim()
         if (pkg == settingsPkg) Log.i(TAG, "Settings screen: $cls \"$title\"")
         if (pkg == settingsPkg && ADD_ACCOUNT_CHOOSER.containsMatchIn(cls)) KioskMode.beginGoogleSignIn(this)
-        if (!blocked(this, pkg, cls, title)) return
+        if (!blocked(this, pkg, cls, title)) {
+            // A pop-up of the blocked app itself doesn't count as being back somewhere allowed.
+            // (For Settings that also means its main page: after Back from a locked page we
+            // still go Home.)
+            if (pkg != blockedPkg) lastAllowedAt = SystemClock.elapsedRealtime()
+            return
+        }
         Log.i(TAG, "Screen guard closed $pkg/$cls \"$title\"")
-        // Back first closes the screen itself; Home alone only hides it, and some screens
-        // (Play services' Google Account) come straight back to the front.
+        // Back closes the screen itself (Home alone only hides it, and it comes back when
+        // the app is opened again). If Back shows another blocked screen, that one is
+        // closed the same way, so a pile of them is cleared. If nothing allowed shows up
+        // shortly after (the screen ignored Back), go Home.
+        val at = SystemClock.elapsedRealtime()
         performGlobalAction(GLOBAL_ACTION_BACK)
-        performGlobalAction(GLOBAL_ACTION_HOME)
+        main.removeCallbacks(homeIfStuck)
+        blockedAt = at
+        blockedPkg = pkg
+        main.postDelayed(homeIfStuck, 700)
         logOnce("$pkg/$cls")
     }
+
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    @Volatile private var lastAllowedAt = 0L
+    @Volatile private var blockedAt = 0L
+    @Volatile private var blockedPkg = ""
+    private val homeIfStuck = Runnable { if (lastAllowedAt < blockedAt) performGlobalAction(GLOBAL_ACTION_HOME) }
 
     override fun onInterrupt() {}
 
