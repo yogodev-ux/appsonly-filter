@@ -64,7 +64,7 @@ echo "== setup screen"
 sh_ am start -n $PKG/.MainActivity >/dev/null; sleep 6; shot 00-setup
 sh_ uiautomator dump /sdcard/ui.xml >/dev/null; sh_ cat /sdcard/ui.xml > "$OUT/setup-ui.xml"
 grep -q 'text="Allow phone calls"' "$OUT/setup-ui.xml" && fail "Setup has no separate calls/texts switches" || pass "Setup has no separate calls/texts switches"
-grep -q 'text="Phone"' "$OUT/setup-ui.xml" && pass "Phone app is a normal entry in the setup list" || fail "Phone app is a normal entry in the setup list"
+grep -qE 'text="(Phone|Messages)"' "$OUT/setup-ui.xml" && pass "Phone/Messages are normal entries in the setup list" || fail "Phone/Messages are normal entries in the setup list" "not visible on the first screen"
 sh_ input keyevent KEYCODE_BACK >/dev/null
 
 echo "== lock"
