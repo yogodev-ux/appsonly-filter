@@ -100,6 +100,8 @@ jobs:
           Write-Output $out
           if ($out -notmatch "No phone found") { throw "installer did not run correctly on Windows" }
           if (-not (Test-Path dist/AppsOnlySetup/AppsOnlySetup.exe)) { throw "exe missing" }
+          # --check exits 1 when no phone is connected; that is the expected result here.
+          $global:LASTEXITCODE = 0
       - uses: actions/upload-artifact@v4
         with:
           name: AppsOnlySetup-windows
