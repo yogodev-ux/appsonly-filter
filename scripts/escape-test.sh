@@ -29,6 +29,13 @@ shot() { adb exec-out screencap -p > "$OUT/shots/$(slug "$1").png" 2>/dev/null |
 resumed() { sh_ dumpsys activity activities | grep -m1 -E "topResumedActivity=" | grep -oE '[a-zA-Z0-9_.]+/[a-zA-Z0-9_.$]+' | head -1; }
 focus() { sh_ dumpsys window | grep mCurrentFocus | sed 's/.*mCurrentFocus=//' | sort -u | tr '\n' ' '; }
 kiosk() { sh_ dumpsys activity activities | grep -m1 -i mLockTaskModeState | sed 's/.*=//'; }
+# A stalled CI emulator sometimes shows "<app> isn't responding"; press Wait.
+dismiss_anr() {
+  sh_ uiautomator dump /sdcard/anr.xml >/dev/null
+  local b; b=$(sh_ cat /sdcard/anr.xml | tr '>' '\n' | grep -m1 'text="Wait"' | grep -o 'bounds="[^"]*"' | grep -oE '[0-9]+' | tr '\n' ' ')
+  [ -z "$b" ] && return 0
+  echo "(closing an 'isn't responding' dialog)"; set -- $b; sh_ input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )) >/dev/null; sleep 1
+}
 home() { sh_ input keyevent KEYCODE_BACK >/dev/null; sh_ input keyevent KEYCODE_BACK >/dev/null; sh_ input keyevent KEYCODE_HOME >/dev/null; sleep 1.5; }
 sbflags() { sh_ dumpsys statusbar | grep -m2 -iE "mDisabled[12]|disable1|disable2" | tr '\n' ' '; }
 
@@ -90,6 +97,7 @@ is_ok_top() {
 check_front() {
   local name=$1 top f p
   sleep 2.5
+  f=$(focus); echo "$f" | grep -q "Application Not Responding" && { dismiss_anr; sleep 1; }
   top=$(resumed); f=$(focus); p=${top%%/*}
   shot "$name"
   if echo "$f" | grep -qiE "NotificationShade|StatusBar.*expanded|GlobalActions|ActionsDialog"; then
