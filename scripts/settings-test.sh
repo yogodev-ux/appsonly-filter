@@ -37,7 +37,7 @@ safe_open() { # name, am start args...
 # Tap through Settings like a person: open Settings, scroll to an entry, tap it.
 risky_tap() { # entry text: open Settings, scroll to it, tap it; the guard must send us home
   local try found ok=0
-  for try in 1 2; do
+  for try in 1 2 3; do
     home; sh_ am start -a android.settings.SETTINGS >/dev/null; sleep 3
     found=0
     for i in 1 2 3 4 5 6 7; do

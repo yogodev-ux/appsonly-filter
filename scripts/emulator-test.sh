@@ -255,6 +255,12 @@ home; sh_ am start -a android.settings.SYNC_SETTINGS >/dev/null; sleep 3; shot 0
 resumed | grep -q "com.android.settings/" && pass "Settings > Accounts opens" || fail "Settings > Accounts opens" "$(resumed)"
 open_signin() { # Settings > Accounts > Add account > Google
   home; sh_ am start -a android.settings.ADD_ACCOUNT_SETTINGS --esa account_types com.google >/dev/null
+  for j in $(seq 1 10); do sleep 2; resumed | grep -q "com.google.android.gms/" && return 0; done
+  # Some Android versions land back on the Accounts list; tap through it like a person would.
+  echo "INFO: direct link ended on $(resumed | grep -oE 'com\.[^ }]*' | head -1); tapping Add account > Google"
+  home; sh_ am start -a android.settings.SYNC_SETTINGS >/dev/null; sleep 3
+  for i in 1 2 3 4; do tap_text "Add account" && break; sh_ input swipe 540 1800 540 800 300 >/dev/null; sleep 1; done
+  sleep 3; tap_text "Google" >/dev/null
   for j in $(seq 1 15); do sleep 2; resumed | grep -q "com.google.android.gms/" && return 0; done
   return 1
 }
