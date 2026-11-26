@@ -101,6 +101,12 @@ made Device Owner again and unlocked with the broadcast above (or the phone is f
 
 ## Known limits to check while testing
 
+- **App updates**: no "install apps" block is used. New apps from `adb install` or sideloading are
+  blocked (unknown sources), and anything new that the Play Store installs is hidden right away.
+  Updates of allowed apps through the (suspended, hidden) Play Store should keep working. To
+  check: `adb shell dumpsys user | grep -i restriction` should **not** list `no_install_apps`,
+  and `adb logcat -s AppsOnlyFilter` shows any Play Store download address the filter blocks.
+
 - Pairing a **new** Bluetooth device may not work, because the pairing pop-up belongs to the
   hidden Settings app. Already-paired devices keep working.
 - Hotel/airport Wi-Fi with a sign-in page won't work (that page is a browser).

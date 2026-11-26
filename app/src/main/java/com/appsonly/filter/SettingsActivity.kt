@@ -138,7 +138,11 @@ class SettingsActivity : Activity() {
         val choices = listOf(30_000 to "30 seconds", 60_000 to "1 minute", 120_000 to "2 minutes",
             300_000 to "5 minutes", 600_000 to "10 minutes")
         val current = DeviceControls.readSystemInt(this, Settings.System.SCREEN_OFF_TIMEOUT, 60_000)
-        val currentLabel = choices.firstOrNull { it.first == current }?.second ?: "${current / 1000} seconds"
+        val currentLabel = choices.firstOrNull { it.first == current }?.second ?: when {
+            current >= 24 * 60 * 60 * 1000 || current < 0 -> "Never"
+            current % 60_000 == 0 -> "${current / 60_000} minutes"
+            else -> "${current / 1000} seconds"
+        }
         row("Screen turns off after: $currentLabel  ›") {
             AlertDialog.Builder(this).setTitle("Screen turns off after")
                 .setItems(choices.map { it.second }.toTypedArray()) { _, i ->
