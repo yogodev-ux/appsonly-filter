@@ -13,7 +13,7 @@ import android.util.Log
 object DeviceControls {
     private const val TAG = "AppsOnly"
 
-    /** Runtime permissions we grant ourselves (Wi-Fi scanning needs location; Bluetooth list). */
+    /** Runtime permissions we grant ourselves (Wi-Fi scanning needs location; Bluetooth list; sign-in notification). */
     private val SELF_PERMISSIONS = buildList {
         add(Manifest.permission.ACCESS_FINE_LOCATION)
         add(Manifest.permission.ACCESS_COARSE_LOCATION)
@@ -21,6 +21,7 @@ object DeviceControls {
             add(Manifest.permission.BLUETOOTH_CONNECT)
             add(Manifest.permission.BLUETOOTH_SCAN)
         }
+        if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     fun prepare(ctx: Context) {

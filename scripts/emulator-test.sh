@@ -228,6 +228,51 @@ echo "---- tamper events in the app log ----"
 grep -E "AppsOnlyTamper|W/AppsOnly|E/AppsOnly" "$OUT/logcat.txt" | grep -v "could not hide" | tail -30
 tamperlog > "$OUT/tamper-log.txt"
 
+echo "== Google sign-in always has a way back"
+signin_state() { sh_ am broadcast -n $PKG/.dev.DevSignInReceiver "$@" | grep -o 'active=[a-z]*'; }
+signin_state --el timeout_ms 30000 >/dev/null
+open_signin() { # from home: Settings -> "Add Google account" (scrolls down to find it)
+  home; tap_text "Settings"; sleep 3
+  for i in 1 2 3 4 5 6; do
+    tap_text "Add Google account" && { sleep 8; return 0; }
+    sh_ input swipe 540 1900 540 700 300 >/dev/null; sleep 1
+  done
+  return 1
+}
+ours() { resumed | grep -q "$PKG"; }
+if ! open_signin; then
+  fail "Add Google account button found" "not on Settings screen"
+elif ours; then
+  # Google closed its page by itself (e.g. no internet): we must be back on our screen.
+  shot 07-signin
+  pass "Sign-in ended by Google: back on our screen"
+  [ "$(signin_state)" = "active=false" ] && pass "Account changes blocked again after sign-in" || fail "Account changes blocked again after sign-in" "$(signin_state)"
+else
+  shot 07-signin
+  pass "Google sign-in opens ($(resumed | grep -oE 'com\.google[^/ ]*' | head -1))"
+  sh_ dumpsys notification --noredact | grep -q "Google sign-in is open" \
+    && pass "'Back to home' notification shown during sign-in" || fail "'Back to home' notification shown during sign-in"
+  # 1) The notification takes you back.
+  sh_ cmd statusbar expand-notifications >/dev/null; sleep 3; shot 08-signin-notification
+  tap_text "Back to home" || tap_text "Stuck?" || tap_text "Google sign-in is open"; sleep 5
+  ours && pass "Tapping the notification returns to our screen" || fail "Tapping the notification returns to our screen" "$(resumed)"
+  [ "$(signin_state)" = "active=false" ] && pass "Account changes blocked again after leaving sign-in" || fail "Account changes blocked again after leaving sign-in" "$(signin_state)"
+  sh_ cmd statusbar collapse >/dev/null
+  # 2) Home works while the sign-in is open.
+  if open_signin && ! ours; then
+    home; sleep 2
+    ours && pass "Home button leaves the sign-in" || fail "Home button leaves the sign-in" "$(resumed)"
+    [ "$(signin_state)" = "active=false" ] && pass "Account changes blocked again after Home" || fail "Account changes blocked again after Home" "$(signin_state)"
+  fi
+  # 3) Left alone, the sign-in closes by itself after the time limit (30 s in this test).
+  if open_signin && ! ours; then
+    sleep 35; shot 09-signin-timeout
+    ours && pass "Sign-in closes by itself after the time limit" || fail "Sign-in closes by itself after the time limit" "$(resumed)"
+    [ "$(signin_state)" = "active=false" ] && pass "Account changes blocked again after time limit" || fail "Account changes blocked again after time limit" "$(signin_state)"
+  fi
+fi
+home
+
 echo "== reboot keeps the lock"
 stop_rec
 adb reboot
