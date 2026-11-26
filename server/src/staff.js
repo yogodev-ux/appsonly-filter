@@ -71,7 +71,7 @@ export function createStaffPortal({ store, services }) {
         : 'The phone will remove it the next time it goes online. Ask the customer to connect it to the internet.'}</p></div>`;
       const code = services.uninstallCodeFor(d);
       if (code && !d.removedSeenAt) {
-        actions += `<div class="card"><h2>Phone can't go online?</h2><p class="muted" style="margin-top:0">Read the customer this uninstall code. They type it in Settings, then Remove the filter.</p>` +
+        actions += `<div class="card"><h2>Phone can't go online?</h2><p class="muted" style="margin-top:0">Read the customer this uninstall code. They tap Remove the filter at the bottom of the phone's home screen and type it there.</p>` +
           `<p style="font-size:1.6rem;letter-spacing:.08em;margin:.3rem 0"><code>${e(code)}</code></p></div>`;
       }
     } else {

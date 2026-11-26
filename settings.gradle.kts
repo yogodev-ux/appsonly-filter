@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 rootProject.name = "apps-only-filter"
 include(":app")
 include(":testapps:fakeaccount")
+include(":testapps:escapeprobe")

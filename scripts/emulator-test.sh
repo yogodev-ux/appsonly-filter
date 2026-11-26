@@ -105,7 +105,7 @@ shot 01-home
 
 echo "== restrictions"
 sh_ dumpsys user > "$OUT/dumpsys-user.txt"
-for r in no_install_unknown_sources no_uninstall_apps no_factory_reset no_safe_boot no_add_user no_modify_accounts no_config_vpn no_config_date_time disallow_config_private_dns; do
+for r in no_install_unknown_sources no_uninstall_apps no_factory_reset no_safe_boot no_add_user no_config_vpn no_config_date_time disallow_config_private_dns; do
   grep -q "$r" "$OUT/dumpsys-user.txt" && pass "Restriction $r set" || fail "Restriction $r set"
 done
 grep -qw no_install_apps "$OUT/dumpsys-user.txt" && fail "Play updates not blocked (no_install_apps absent)" || pass "Play updates not blocked (no_install_apps absent)"
@@ -117,7 +117,7 @@ echo "$LT" | grep -q LOCKED && pass "Kiosk (lock task) mode on" || fail "Kiosk (
 
 echo "== hidden apps"
 hidden_state() { sh_ dumpsys package "$1" | grep -m1 -o "hidden=[a-z]*"; }
-for p in com.android.chrome com.android.settings com.google.android.googlequicksearchbox; do
+for p in com.android.chrome com.google.android.googlequicksearchbox; do
   if sh_ pm list packages -u | grep -qx "package:$p"; then
     st=$(hidden_state "$p"); [ "$st" = "hidden=true" ] && pass "$p hidden" || fail "$p hidden" "$st"
   fi
@@ -140,20 +140,16 @@ blocked_open() { # name, am start args...
   sh_ am start "$@" >/dev/null; sleep 3
   local top; top=$(resumed)
   shot "open-$(echo "$name" | tr ' /:' '___')"
-  if echo "$top" | grep -qE "com.android.vending|com.android.settings|com.android.chrome"; then fail "$name is blocked" "$top"; else pass "$name is blocked"; fi
+  if echo "$top" | grep -qE "com.android.vending|com.android.chrome"; then fail "$name is blocked" "$top"; else pass "$name is blocked"; fi
 }
 blocked_open "market:// link" -a android.intent.action.VIEW -d "market://details?id=com.whatsapp"
 blocked_open "play.google.com link" -a android.intent.action.VIEW -d "https://play.google.com/store/apps/details?id=com.whatsapp"
-blocked_open "Settings app" -a android.settings.SETTINGS
-blocked_open "Wi-Fi settings page" -a android.settings.WIFI_SETTINGS
 blocked_open "Play Store main screen" -n com.android.vending/com.google.android.finsky.activities.MainActivity
 
 echo "== our own screens open"
 home
-tap_text "Settings"; sleep 3; shot 02-settings
-resumed | grep -q "$PKG/.SettingsActivity" && pass "Our Settings screen opens" || fail "Our Settings screen opens" "$(resumed)"
-tap_text "Wi-Fi networks"; sleep 4; shot 03-wifi
-resumed | grep -q "$PKG/.WifiActivity" && pass "Our Wi-Fi screen opens" || fail "Our Wi-Fi screen opens" "$(resumed)"
+tap_text "Settings"; sleep 4; shot 03-real-settings
+resumed | grep -q "com.android.settings/" && pass "The phone's real Settings app opens from the home screen" || fail "The phone's real Settings app opens from the home screen" "$(resumed)"
 if [ -n "$FIRST_ALLOWED" ]; then
   home
   sh_ monkey -p "$FIRST_ALLOWED" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1; sleep 4; shot 04-allowed-app
@@ -261,65 +257,61 @@ sleep 3
 N=$(grep -c "granted android.permission.ACCESS_FINE_LOCATION" "$OUT/logcat.txt")
 [ "$N" -le 1 ] && pass "Location permission granted once (no repeated 'has location access' pop-up)" || fail "Location permission granted once (no repeated 'has location access' pop-up)" "granted $N times"
 
-echo "== Google sign-in always has a way back"
-signin_state() { sh_ am broadcast -n $PKG/.dev.DevSignInReceiver "$@" | grep -o 'active=[a-z]*'; }
-signin_state --el timeout_ms 30000 >/dev/null
-ours() { resumed | grep -q "$PKG"; }
-open_signin() { # from home: Settings -> "Add Google account" (scrolls down to find it)
-  home; tap_text "Settings"; sleep 3
-  for i in 1 2 3 4 5 6; do
-    if tap_text "Add Google account"; then
-      # Wait (up to 30 s; the emulator can be slow) until Google's page is in front,
-      # or the sign-in has already ended and we are back.
-      local seen=0
-      for j in $(seq 1 15); do
-        sleep 2
-        ours || return 0
-        st=$(signin_state)
-        [ "$st" = "active=true" ] && seen=1
-        [ "$st" = "active=false" ] && [ $seen = 1 ] && return 0
-      done
-      return 0
-    fi
-    sh_ input swipe 540 1900 540 700 300 >/dev/null; sleep 1
-  done
+echo "== adding a Google account from the phone's real Settings app"
+# The screen guard opens Google's sign-in window when Settings shows "Add an account", so it
+# must be on (the Windows installer allows it the same way).
+sh_ pm grant $PKG android.permission.WRITE_SECURE_SETTINGS >/dev/null; home; sleep 5
+sh_ settings get secure enabled_accessibility_services | grep -q "$PKG" || echo "INFO: screen guard not on yet: $(sh_ settings get secure enabled_accessibility_services)"
+ok_signin_top() { resumed | grep -qE "com.google.android.gms/|com.android.settings/|$PKG/|com.android.systemui"; }
+home; sh_ am start -a android.settings.SYNC_SETTINGS >/dev/null; sleep 3; shot 07-accounts
+resumed | grep -q "com.android.settings/" && pass "Settings > Accounts opens" || fail "Settings > Accounts opens" "$(resumed)"
+open_signin() { # Settings > Accounts > Add account > Google
+  home; sh_ am start -a android.settings.ADD_ACCOUNT_SETTINGS --esa account_types com.google >/dev/null
+  for j in $(seq 1 10); do sleep 2; resumed | grep -q "com.google.android.gms/" && return 0; done
+  # Some Android versions land back on the Accounts list; tap through it like a person would.
+  echo "INFO: direct link ended on $(resumed | grep -oE 'com\.[^ }]*' | head -1); tapping Add account > Google"
+  home; sh_ am force-stop com.android.settings; sh_ am start -a android.settings.SYNC_SETTINGS >/dev/null; sleep 4
+  for i in 1 2 3 4; do tap_text "Add account" && break; sh_ input swipe 540 1800 540 800 300 >/dev/null; sleep 1; done
+  sleep 4; sh_ uiautomator dump /sdcard/ui.xml >/dev/null
+  echo "INFO: account types offered: $(sh_ cat /sdcard/ui.xml | grep -oE 'text="[^"]+"' | cut -d'"' -f2 | head -15 | tr '\n' '|')"
+  tap_text "Google" >/dev/null
+  for j in $(seq 1 15); do sleep 2; resumed | grep -q "com.google.android.gms/" && return 0; done
   return 1
 }
-open_signin; SIGNIN_FOUND=$?
-echo "top after tapping Add Google account: $(resumed)"
-grep -E "Google sign-in|AccountManager|E/AppsOnly|W/AppsOnly" "$OUT/logcat.txt" | grep -v "could not hide" | tail -15
-if [ $SIGNIN_FOUND != 0 ]; then
-  fail "Add Google account button found" "not on Settings screen"
-elif ours; then
-  # Google closed its page by itself (e.g. no internet): we must be back on our screen.
-  shot 07-signin
-  pass "Sign-in ended by Google: back on our screen"
-  [ "$(signin_state)" = "active=false" ] && pass "Account changes blocked again after sign-in" || fail "Account changes blocked again after sign-in" "$(signin_state)"
+if open_signin; then
+  shot 08-signin
+  pass "Google sign-in opens from Settings ($(resumed | grep -oE 'com\.google[^ }]*' | head -1))"
+  # Links inside Google's sign-in must not lead anywhere outside it (no browser, no other app).
+  for link in "Learn more" "Forgot email" "Create account" "Help" "Privacy" "Terms"; do
+    if tap_text "$link"; then
+      sleep 4
+      ok_signin_top && pass "Sign-in link '$link' stays inside sign-in/Settings" || fail "Sign-in link '$link' stays inside sign-in/Settings" "$(resumed)"
+      resumed | grep -q "com.google.android.gms/" || open_signin >/dev/null
+    fi
+  done
+  # While the sign-in is open, Play services may open its own windows; its other screens
+  # (Google settings, Google Account, Help with web pages) must still be closed.
+  lock_task_pkgs() { sh_ dumpsys device_policy | grep -m1 -iE "lockTaskPackages|lock-task-packages" ; }
+  lock_task_pkgs | grep -q com.google.android.gms && pass "Play services allowed during the sign-in" || echo "INFO: lock task packages during sign-in: $(lock_task_pkgs)"
+  for c in com.google.android.gms/.app.settings.GoogleSettingsLink \
+           com.google.android.gms/.googlesettings.ui.GoogleSettingsActivity \
+           com.google.android.gms/.accountsettings.mg.ui.main.MainActivity \
+           com.google.android.gms/.googlehelp.helpactivities.HelpActivity; do
+    sh_ am start -f 0x10000000 -n "$c" >/dev/null 2>&1
+    cls=${c##*/}; ok=0; for k in 1 2 3; do sleep 2; resumed | grep -qF "${cls#.}" || { ok=1; break; }; done
+    [ $ok = 1 ] && pass "During sign-in, $c is closed" || { shot "signin-window-$(echo ${c##*.})"; fail "During sign-in, $c is closed" "$(resumed)"; }
+    resumed | grep -q "com.google.android.gms/" || open_signin >/dev/null
+  done
+  # Home always leaves the sign-in (a Google page still starting may need a second press).
+  home; sleep 2
+  resumed | grep -q "$PKG" || { echo "INFO: first Home press landed while a Google page was starting: $(resumed)"; home; sleep 2; }
+  resumed | grep -q "$PKG" && pass "Home button leaves the sign-in" || fail "Home button leaves the sign-in" "$(resumed)"
+  sleep 2
+  lock_task_pkgs | grep -q com.google.android.gms && fail "Play services not allowed again after leaving the sign-in" "$(lock_task_pkgs)" || pass "Play services not allowed again after leaving the sign-in"
 else
-  shot 07-signin
-  pass "Google sign-in opens ($(resumed | grep -oE 'com\.google[^/ ]*' | head -1))"
-  sh_ dumpsys notification --noredact | grep -q "Google sign-in is open" \
-    && pass "'Back to home' notification shown during sign-in" || fail "'Back to home' notification shown during sign-in"
-  # 1) The notification takes you back.
-  sh_ cmd statusbar expand-notifications >/dev/null; sleep 3; shot 08-signin-notification
-  tap_text "Back to home" || tap_text "Stuck?" || tap_text "Google sign-in is open"; sleep 5
-  ours && pass "Tapping the notification returns to our screen" || fail "Tapping the notification returns to our screen" "$(resumed)"
-  [ "$(signin_state)" = "active=false" ] && pass "Account changes blocked again after leaving sign-in" || fail "Account changes blocked again after leaving sign-in" "$(signin_state)"
-  sh_ cmd statusbar collapse >/dev/null
-  # 2) Home works while the sign-in is open.
-  if open_signin && ! ours; then
-    home
-    # Give a busy emulator up to 8 s to switch screens.
-    for i in 1 2 3 4; do sleep 2; ours && break; done
-    ours && pass "Home button leaves the sign-in" || fail "Home button leaves the sign-in" "$(resumed)"
-    [ "$(signin_state)" = "active=false" ] && pass "Account changes blocked again after Home" || fail "Account changes blocked again after Home" "$(signin_state)"
-  fi
-  # 3) Left alone, the sign-in closes by itself after the time limit (30 s in this test).
-  if open_signin && ! ours; then
-    sleep 35; shot 09-signin-timeout
-    ours && pass "Sign-in closes by itself after the time limit" || fail "Sign-in closes by itself after the time limit" "$(resumed)"
-    [ "$(signin_state)" = "active=false" ] && pass "Account changes blocked again after time limit" || fail "Account changes blocked again after time limit" "$(signin_state)"
-  fi
+  shot 08-signin
+  fail "Google sign-in opens from Settings" "$(resumed)"
+  echo "   guard: $(grep -E 'AppsOnly' "$OUT/logcat.txt" | grep -E 'Settings screen|Screen guard closed|guard saw|sign-in' | tail -10 | sed 's/.*AppsOnly[^:]*: //' | tr '\n' '|')"
 fi
 home
 
@@ -355,6 +347,8 @@ if [ -n "$FIRST_ALLOWED" ]; then
   rm -rf "$OUT/upd"
 fi
 echo "(A real Play Store auto-update needs a signed-in Google account, which the cloud emulator doesn't have.)"
+
+source scripts/settings-test.sh
 
 echo "== reboot keeps the lock"
 stop_rec
