@@ -57,7 +57,8 @@ open class FakeAdb(
             sh == "getprop ro.product.model" -> CmdResult(0, model)
             sh == "dumpsys device_policy" -> CmdResult(0, owner?.let { OWNER_DUMP.replace("com.appsonly.filter", it) } ?: "Current Device Policy Manager state:\n")
             sh == "pm list users" -> CmdResult(0, users)
-            sh == "dumpsys account" -> CmdResult(0, accounts)
+            // Like Android: accounts whose owner app is switched off stop being listed.
+            sh == "dumpsys account" -> CmdResult(0, accounts.lines().filterNot { l -> disabled.any { "ComponentInfo{$it/" in l } }.joinToString("\n"))
             sh.startsWith("pm disable-user") -> { val p = sh.split(" ").last(); disabled += p; CmdResult(0, "Package $p new state: disabled-user") }
             sh.startsWith("pm enable") -> { val p = sh.split(" ").last(); disabled -= p; CmdResult(0, "Package $p new state: enabled") }
             sh.startsWith("dpm set-device-owner") ->

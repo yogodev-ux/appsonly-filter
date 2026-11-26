@@ -58,8 +58,9 @@ object Parsers {
             "already provisioned" in o || "provisioned" in o ->
                 "The phone was already set up in a way that blocks this. A factory reset is needed."
             "unknown admin" in o || "not found" in o -> "The Apps Only app did not install correctly."
+            "being removed" in o -> "The phone is still busy from the last attempt. Wait a minute and run setup again."
             else -> "Setup was refused by the phone: " +
-                (out.lines().firstOrNull { "Exception" in it || "Error" in it } ?: out.lines().firstOrNull { it.isNotBlank() } ?: out).trim()
+                (out.lines().firstOrNull { ("Exception" in it || "Error" in it) && "occurred while executing" !in it } ?: out.lines().firstOrNull { it.isNotBlank() } ?: out).trim()
         }
     }
 }

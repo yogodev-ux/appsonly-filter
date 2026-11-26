@@ -180,7 +180,7 @@ class SetupEngine(
                         return false
                     }
                 }
-                sleeper(3000) // let Android notice the accounts are gone
+                waitForAccountsHidden(disabled)
             }
             ownerOk = setDeviceOwner()
         } finally {
@@ -197,17 +197,32 @@ class SetupEngine(
         return true
     }
 
+    /**
+     * Android drops the switched-off apps from its list of account owners a moment later;
+     * until then it still counts their accounts. Wait (up to ~30 s) for that to happen.
+     */
+    private fun waitForAccountsHidden(pkgs: List<String>) {
+        for (i in 1..15) {
+            val owners = Parsers.authenticators(adb.shell("dumpsys account").out).values
+            if (owners.none { it in pkgs }) { log.add("account owners gone after ~${(i - 1) * 2}s"); return }
+            sleeper(2000)
+        }
+        warn("Android is slow to notice the switched-off apps; trying anyway.")
+    }
+
     private fun setDeviceOwner(): Boolean {
         var last = ""
-        for (attempt in 1..2) {
+        for (attempt in 1..4) {
             val r = adb.shell("dpm set-device-owner --user 0 ${config.adminComponent}")
             last = r.out
             val summary = r.out.lines().filter { it.isNotBlank() && !it.trimStart().startsWith("at ") }.take(4).joinToString(" / ")
             log.add("dpm: $summary")
-            if (!r.out.contains("Success")) info("Phone said: $summary")
             if (r.out.contains("Success") || r.out.contains("Active admin set")) return true
-            // Android can take a moment to notice the accounts are gone; try once more.
-            if (attempt == 1 && r.out.lowercase().contains("account")) sleeper(4000) else break
+            info("Phone said: $summary")
+            // Retry only for the passing reasons: accounts not yet hidden, or Android still
+            // cleaning up after the previous refused attempt.
+            val o = r.out.lowercase()
+            if (attempt < 4 && ("account" in o || "being removed" in o)) sleeper(8000) else break
         }
         error(Parsers.explainDpmError(last))
         return false
