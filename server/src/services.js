@@ -8,6 +8,7 @@
 //   Code reset sendCodeReset(who, deviceId)  -> emails a link; resetPage / resetSubmit handle it
 //   Alerts     addAlert(type, device, detail)  listAlerts({open})  handleAlert(who, id)
 //              checkUnpaid()  (phones set up but not paid for 3 days)
+//   Email      dailySummary(to)  one email a day: open alerts and the last 24 hours
 import { checkSecret, hashSecret } from './secrets.js';
 import { escapeHtml, html, randomToken, sha256Hex } from './util.js';
 
@@ -232,7 +233,49 @@ export function createServices({ store, setStatus, mailer, baseUrl, now = () => 
     return html('<h1>Saved</h1><p>Your new removal code is set. You can close this page.</p>');
   }
 
+  /** The owner's one daily email: what needs them, and what happened in the last 24 hours. */
+  async function dailySummary(to) {
+    const t = now().getTime();
+    const recent = (iso) => iso && t - Date.parse(iso) < 86400 * 1000;
+    const devices = await store.listDevices();
+    const byId = new Map(devices.map((d) => [d.id, d]));
+    const alerts = await listAlerts();
+    const actions = (await store.listAudit()).filter((a) => recent(a.at));
+    const removals = actions.filter((a) => a.action === 'remove' || a.action === 'remove-without-code');
+    const lines = [];
+    lines.push(alerts.length ? `${alerts.length} ${alerts.length === 1 ? 'alert needs' : 'alerts need'} you:` : 'Nothing needs you today.');
+    for (const a of alerts.slice(0, 30)) {
+      const d = a.deviceId ? byId.get(a.deviceId) : null;
+      const who = d ? `${d.customer?.name || d.payCode} (${d.payCode})` : 'before the phone was linked';
+      lines.push(`- ${ALERT_TYPES[a.type] ?? a.type}: ${who}${a.detail ? `, ${a.detail}` : ''}`);
+    }
+    if (alerts.length > 30) lines.push(`- and ${alerts.length - 30} more`);
+    lines.push('', 'Last 24 hours:');
+    lines.push(`- Phones set up: ${devices.filter((d) => recent(d.createdAt)).length}`);
+    lines.push(`- Payments: ${devices.filter((d) => recent(d.paidAt)).length}`);
+    lines.push(`- Filters removed: ${removals.length}${removals.length ? ` (${removals.map((r) => `${r.by}: ${r.reason ?? ''}`).join('; ')})` : ''}`);
+    lines.push(`- Wrong removal codes typed by staff: ${actions.filter((a) => a.action === 'wrong-removal-code').length}`);
+    lines.push('', `Open the owner portal: ${baseUrl}/owner`);
+    await mailer.send({
+      to,
+      subject: alerts.length ? `Apps Only: ${alerts.length} ${alerts.length === 1 ? 'alert needs' : 'alerts need'} you` : 'Apps Only: daily summary',
+      text: lines.join('\n') + '\n',
+    });
+  }
+
+  /** Sends the daily summary once a day, at or after `hour` (server local time). */
+  async function maybeDailySummary(to, hour) {
+    if (!to) return false;
+    const n = now();
+    const day = `${n.getFullYear()}-${n.getMonth() + 1}-${n.getDate()}`;
+    if (n.getHours() < hour || (await store.getMeta('summarySentDay')) === day) return false;
+    await store.putMeta('summarySentDay', day);
+    await dailySummary(to);
+    return true;
+  }
+
   return {
+    dailySummary, maybeDailySummary,
     customerView, uninstallCodeFor, searchCustomers, addAlert, listAlerts, handleAlert, checkUnpaid,
     removeWithCode, removeOverride, setPaid, sendCodeReset, resetPage, resetSubmit,
   };

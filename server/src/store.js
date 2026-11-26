@@ -5,11 +5,12 @@
 //   addAudit(entry)  listAudit()
 //   addAlert(alert)  putAlert(alert)  listAlerts()
 //   putReset(reset)  getReset(tokenHash)  deleteReset(tokenHash)
+//   getMeta(key)  putMeta(key, value)
 import { readFileSync, writeFileSync, existsSync, renameSync } from 'node:fs';
 
 export class MemoryStore {
   constructor(data = {}) {
-    this.data = { devices: {}, logs: [], users: {}, sessions: {}, audit: [], alerts: [], resets: {}, ...data };
+    this.data = { devices: {}, logs: [], users: {}, sessions: {}, audit: [], alerts: [], resets: {}, meta: {}, ...data };
   }
   async getDevice(id) {
     return this.data.devices[id] ?? null;
@@ -88,6 +89,13 @@ export class MemoryStore {
   }
   async deleteReset(tokenHash) {
     delete this.data.resets[tokenHash];
+    this.changed();
+  }
+  async getMeta(key) {
+    return this.data.meta[key] ?? null;
+  }
+  async putMeta(key, value) {
+    this.data.meta[key] = value;
     this.changed();
   }
   changed() {}

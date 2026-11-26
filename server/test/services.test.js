@@ -135,3 +135,27 @@ test('alerts: failed setups, tamper reports, unpaid after 3 days; one open alert
   await s.handleAlert(owner, first.id);
   assert.equal((await s.listAlerts()).length, 2);
 });
+
+test('daily summary: one email a day, with open alerts and the last 24 hours', async () => {
+  let t = new Date(2026, 11, 1, 7, 0).getTime();
+  const { s, phone, mailer, post } = await setup({ clock: () => new Date(t) });
+  const a = await phone(1);
+  await post('/v1/tamper', { events: [{ type: 'web_filter_revoked' }] }, a.token);
+  await s.removeWithCode(staff, a.deviceId, 'code-1-secret', 'Customer called');
+  mailer.sent.length = 0;
+  assert.equal(await s.maybeDailySummary('owner@example.com', 8), false, 'not before 8');
+  t += 2 * 3600 * 1000;
+  assert.equal(await s.maybeDailySummary('owner@example.com', 8), true);
+  assert.equal(await s.maybeDailySummary('owner@example.com', 8), false, 'once a day');
+  assert.equal(await s.maybeDailySummary('', 8), false, 'no address, no email');
+  assert.equal(mailer.sent.length, 1);
+  const m = mailer.sent[0];
+  assert.equal(m.to, 'owner@example.com');
+  assert.match(m.subject, /1 alert needs you/);
+  assert.match(m.text, /Tamper attempt: Customer 1/);
+  assert.match(m.text, /Filters removed: 1 \(dana: Customer called\)/);
+  assert.match(m.text, /http:\/\/server\.test\/owner/);
+  assert.doesNotMatch(m.text, /code-1-secret/);
+  t += 24 * 3600 * 1000;
+  assert.equal(await s.maybeDailySummary('owner@example.com', 8), true, 'next day again');
+});

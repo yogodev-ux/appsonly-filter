@@ -2,6 +2,7 @@
 // Settings come from environment variables:
 //   PORT (8787)  BASE_URL  DATA_FILE (data.json)  ADMIN_TOKEN
 //   OWNER_PASSWORD (sign-in for the owner portal, user name "owner")
+//   OWNER_EMAIL (gets the daily summary)  DAILY_EMAIL_HOUR (0-23, server time; default 8)
 //   LICENSE_PRIVATE_JWK (JSON; default: the committed TEST key)
 //   PAYMENTS=test|stripe  STRIPE_SECRET_KEY  STRIPE_WEBHOOK_SECRET  PRICE_CENTS  CURRENCY  PRICE_TEXT
 import http from 'node:http';
@@ -58,3 +59,9 @@ http
 
 // Phones set up but unpaid for 3 days become alerts; check every hour.
 setInterval(() => app.services.checkUnpaid().catch((e) => console.error(e)), 3600 * 1000).unref();
+
+// One summary email a day for the owner. Emails are only queued in this log until an email
+// service is set up.
+if (!env.OWNER_EMAIL) console.warn('OWNER_EMAIL is not set, so no daily summary email.');
+const emailHour = Number(env.DAILY_EMAIL_HOUR ?? 8);
+setInterval(() => app.services.maybeDailySummary(env.OWNER_EMAIL, emailHour).catch((e) => console.error(e)), 10 * 60 * 1000).unref();
