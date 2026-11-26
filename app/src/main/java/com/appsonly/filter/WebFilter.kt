@@ -95,6 +95,35 @@ object WebFilter {
         return isSystem && r.googleCore.matches(h)
     }
 
+    // "uid/address" -> when it stops counting. Filled from allowed lookups.
+    private val resolved = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private const val RESOLVED_MS = 6 * 60 * 60_000L
+
+    /** [uid] looked up a name it may reach and got [ips]: it may now connect to them. */
+    fun remember(uid: Int, ips: List<java.net.InetAddress>) {
+        if (ips.isEmpty()) return
+        val now = System.currentTimeMillis()
+        if (resolved.size > 50_000) resolved.entries.removeIf { it.value < now }
+        for (ip in ips) resolved["$uid/${ip.hostAddress}"] = now + RESOLVED_MS
+    }
+
+    /**
+     * May [uid] open a connection to [ip]? Only to addresses it looked up through the filter
+     * and was allowed. A Wi-Fi proxy, a typed-in address or an app's own secure DNS all fail
+     * this check, so they can't get around the name filter.
+     */
+    fun connectAllowed(ctx: Context, uid: Int, ip: java.net.InetAddress): Boolean {
+        if (uid in 0 until Process.FIRST_APPLICATION_UID) return true // system services
+        val until = resolved["$uid/${ip.hostAddress}"]
+        if (until != null && until > System.currentTimeMillis()) return true
+        if (!STRICT_FOR_ALL_APPS && uid >= 0) {
+            val pkgs = ctx.packageManager.getPackagesForUid(uid) ?: return false
+            val visible = LockPolicy.visiblePackages(ctx, Prefs.load(ctx))
+            return pkgs.any { it in visible }
+        }
+        return false
+    }
+
     /** Debug builds log every lookup; blocked ones as "BLOCKED". */
     fun logLookup(ctx: Context, uid: Int, host: String, allowed: Boolean) {
         if ((ctx.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return
@@ -107,10 +136,11 @@ object WebFilter {
         try {
             val dpm = LockPolicy.dpm(ctx)
             val admin = AdminReceiver.component(ctx)
-            if (dpm.getAlwaysOnVpnPackage(admin) != ctx.packageName) {
-                // Lockdown is off because the filter only carries DNS lookups; normal traffic
-                // goes straight out. The customer can't turn it off (VPN settings are blocked).
-                dpm.setAlwaysOnVpnPackage(admin, ctx.packageName, false)
+            if (dpm.getAlwaysOnVpnPackage(admin) != ctx.packageName || !dpm.isAlwaysOnVpnLockdownEnabled(admin)) {
+                // Lockdown on: all traffic goes through the filter, and while the filter is
+                // starting nothing gets out. Our own app is always let through by Android.
+                // The customer can't turn it off (VPN settings are blocked).
+                dpm.setAlwaysOnVpnPackage(admin, ctx.packageName, true)
             }
             ctx.startService(android.content.Intent(ctx, FilterVpnService::class.java))
         } catch (e: Exception) {

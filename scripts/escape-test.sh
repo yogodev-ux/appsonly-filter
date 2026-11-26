@@ -262,6 +262,50 @@ probe "Google Help (Play services, shows web pages)" --es cmp com.google.android
 probe "Share sheet" --es action android.intent.action.SEND --es type text/plain
 probe "File picker" --es action android.intent.action.GET_CONTENT --es type "*/*"
 
+# ------------------------------------------------------------------ 4b. getting around the web filter
+echo "== web filter: proxies and direct addresses, from inside an allowed app"
+# The filter checks names. These try to reach the internet without a name lookup the filter
+# allows: through a proxy set in the phone's settings (like a Wi-Fi proxy), and straight to
+# an address. Each must fail; a normal allowed site must still work.
+net_probe() { # what kind(url|tcp) -> prints "ok ..." or "error ..."
+  local what=$1 kind=$2 r="" start
+  home
+  start=$(wc -l < "$OUT/logcat.txt")
+  sh_ am start -S -W -n $PROBE/.Probe --es "$kind" "$what" >/dev/null
+  for i in $(seq 1 30); do
+    r=$(tail -n +$((start+1)) "$OUT/logcat.txt" | grep -F "NET " | grep -F " $what " | tail -1 | sed 's/.*NET //')
+    [ -n "$r" ] && break; sleep 1
+  done
+  echo "${r:-error no answer}"
+}
+net_ok()      { local r; r=$(net_probe "$2" "$3"); case "$r" in ok*) pass "$1 ($r)";; *) fail "$1" "$r";; esac; }
+net_refused() { local r; r=$(net_probe "$2" "$3"); case "$r" in error*) pass "$1 (${r:0:80})";; *) fail "$1" "it worked: $r";; esac; }
+
+net_ok "Allowed app still reaches a site on its list" "https://www.googleapis.com/" url
+net_refused "Site not on the list is blocked" "https://www.wikipedia.org/" url
+net_refused "Typed-in address is blocked (Cloudflare 1.1.1.1:443)" "1.1.1.1:443" tcp
+net_refused "Private DNS / secure DNS server is blocked (8.8.8.8:853)" "8.8.8.8:853" tcp
+net_refused "Web server by address is blocked (93.184.215.14:80)" "93.184.215.14:80" tcp
+
+PROXY_LOG="$OUT/proxy.log"; : > "$PROXY_LOG"
+python3 scripts/test-proxy.py 8899 "$PROXY_LOG" & PROXY_PID=$!
+sleep 1
+# The proxy itself works (from the CI machine), so a failure below is the filter's doing.
+if curl -s -o /dev/null -w "%{http_code}" -x http://127.0.0.1:8899 https://www.wikipedia.org/ --max-time 15 | grep -qE "^[23]"; then
+  pass "Test proxy works from the computer"
+else
+  fail "Test proxy works from the computer" "control check failed, proxy checks below prove nothing"
+fi
+sh_ settings put global http_proxy 10.0.2.2:8899 >/dev/null; sleep 3
+net_refused "Proxy set in the phone's settings can't reach a blocked site" "https://www.wikipedia.org/" url
+net_refused "Proxy can't reach a plain web page" "http://neverssl.com/" url
+PHONE_HITS=$(grep -vc "^127\.0\.0\.1 " "$PROXY_LOG")
+[ "$PHONE_HITS" = "0" ] && pass "No connection from the phone reached the proxy" || fail "No connection from the phone reached the proxy" "$(grep -v '^127' "$PROXY_LOG" | head -3)"
+sh_ settings put global http_proxy :0 >/dev/null; sh_ settings delete global http_proxy >/dev/null
+kill $PROXY_PID 2>/dev/null
+sleep 2
+net_ok "Allowed site works again after the proxy is removed" "https://www.googleapis.com/" url
+
 # Sweep: every exported "main" screen of every package that is still installed and visible.
 echo "== sweep: every visible app screen, from inside an allowed app"
 sh_ cmd package query-activities --brief -a android.intent.action.MAIN | grep / | sort -u > "$OUT/all-main-activities.txt"
