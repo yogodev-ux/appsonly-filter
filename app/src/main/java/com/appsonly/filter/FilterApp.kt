@@ -40,6 +40,13 @@ class FilterApp : Application() {
             }
         }
         registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+        // Switch the status bar off before the phone turns off, so it is already off while
+        // the phone starts up again (kiosk mode does not survive a reboot).
+        registerReceiver(object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (Prefs.load(context).locked) KioskMode.setShadeAllowed(context, false)
+            }
+        }, IntentFilter(Intent.ACTION_SHUTDOWN).apply { addAction(Intent.ACTION_REBOOT) }, Context.RECEIVER_EXPORTED)
         enforceAsync()
         // Step 4: keep the license fresh (also activates the phone with the server the first time).
         if (Prefs.load(this).locked) worker.execute { if (License.refresh(this)) LockPolicy.enforce(this) }

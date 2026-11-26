@@ -125,6 +125,7 @@ object AccountFlow {
     }
 
     private fun backIntent(ctx: Context) = Intent(ctx, SettingsActivity::class.java)
+        .putExtra(SettingsActivity.EXTRA_ACCOUNT_ONLY, true)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
 
     /** Brings our Settings screen (and so our task) back in front of Google's page. */
@@ -162,8 +163,8 @@ object AccountFlow {
         val dpm = LockPolicy.dpm(ctx)
         val admin = AdminReceiver.component(ctx)
         try {
+            // Accounts are open in the real Settings app now; never block them again here.
             if (allowed) dpm.clearUserRestriction(admin, UserManager.DISALLOW_MODIFY_ACCOUNTS)
-            else dpm.addUserRestriction(admin, UserManager.DISALLOW_MODIFY_ACCOUNTS)
         } catch (e: Exception) {
             Log.w(TAG, "account restriction", e)
         }
