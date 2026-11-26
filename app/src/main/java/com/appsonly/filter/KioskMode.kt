@@ -66,6 +66,8 @@ object KioskMode {
         } catch (e: Exception) { Log.w(TAG, "google sign-in allow", e) }
     }
 
+    fun googleSignInOpen() = System.currentTimeMillis() < googleSignInUntil
+
     fun endGoogleSignIn(ctx: Context?) {
         main.removeCallbacks(signInTimeout)
         if (googleSignInUntil == 0L) return

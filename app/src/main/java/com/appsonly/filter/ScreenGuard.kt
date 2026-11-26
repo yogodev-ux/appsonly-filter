@@ -138,9 +138,9 @@ class ScreenGuard : AccessibilityService() {
             return t.isNotEmpty() && t in SETTINGS_DENY_TITLE
         }
 
-        /** Google's sign-in screens (adding an account from the real Settings app). */
         /** Settings' "Add an account" list: the customer is about to add an account. */
         private val ADD_ACCOUNT_CHOOSER = Regex("""ChooseAccountActivity|AddAccountSettings""")
+        /** Google's sign-in screens. */
         private val ADD_ACCOUNT = Regex("""com\.google\.android\.gms\.auth\.uiflows\.addaccount\.""")
 
         private class Allowed(val apps: Set<String>, val keyboards: Set<String>)
@@ -163,7 +163,9 @@ class ScreenGuard : AccessibilityService() {
             if (!isActivity(ctx, pkg, cls)) return false // pop-ups, overlays, the keyboard itself, the shade
             if (pkg in a.keyboards) return true // keyboard settings screens
             if (pkg in HELPERS) {
-                if (ADD_ACCOUNT.containsMatchIn(cls)) return false // Google sign-in from Settings > Accounts
+                // Google sign-in, only when the customer started it from Settings > Accounts > Add account
+                // (not when an allowed app opens it, for example from Play services' supervised-user page)
+                if (ADD_ACCOUNT.containsMatchIn(cls) && (KioskMode.googleSignInOpen() || AccountFlow.active)) return false
                 return HELPER_DENY.any { it.containsMatchIn(cls) }
             }
             return true
