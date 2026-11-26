@@ -20,9 +20,10 @@ object KioskMode {
     private val SYSTEM_HELPERS = setOf(
         "android", // share sheet / "open with" chooser
         "com.android.systemui",
-        "com.google.android.permissioncontroller", "com.android.permissioncontroller",
+        // Permission prompts and the photo picker are NOT listed: they open inside the app
+        // that asks, which is all they need. Listed, the permission app's "Default apps" and
+        // "Home app" screens could be opened on their own.
         "com.google.android.documentsui", "com.android.documentsui",
-        "com.google.android.providers.media.module", "com.android.providers.media.module",
         "com.android.server.telecom", "com.android.phone", // calls
         "com.android.intentresolver", // share sheet on Android 13+
         // Google Play services is NOT listed. Its screens still open inside an allowed app or
@@ -40,6 +41,7 @@ object KioskMode {
             DevicePolicyManager.LOCK_TASK_FEATURE_KEYGUARD          // screen lock / PIN
 
     fun configure(ctx: Context, dpm: DevicePolicyManager, admin: ComponentName, visible: Set<String>) {
+        hideSideDoors(ctx, dpm, admin, visible)
         val pkgs = (visible + SYSTEM_HELPERS + AppScanner.keyboards(ctx) + ctx.packageName).toTypedArray()
         try {
             dpm.setLockTaskPackages(admin, pkgs)
@@ -70,6 +72,36 @@ object KioskMode {
 
     fun isOn(ctx: Context) =
         ctx.getSystemService(ActivityManager::class.java).lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
+
+    /**
+     * System apps with no home-screen icon whose screens an allowed app could still open
+     * inside its own window (the escape test found each of these). None is needed on a
+     * locked phone, so they are hidden like any other app. Emergency alerts, the phone
+     * service, keyboards and accessibility are deliberately left alone.
+     */
+    val SIDE_DOORS = setOf(
+        "com.android.egg",                          // Android version easter egg / games
+        "com.google.android.apps.restore",          // "copy data / WhatsApp import" screens
+        "com.google.android.apps.wallpaper",        // wallpaper & style picker
+        "com.android.wallpaper.livepicker",
+        "com.google.android.apps.wellbeing",        // Digital Wellbeing settings
+        "com.google.android.settings.intelligence", // Settings search and suggestions
+        "com.google.android.projection.gearhead",   // Android Auto
+        "com.google.android.apps.tips",
+        "com.google.android.feedback",
+        "com.android.traceur",                      // system tracing (developer tool)
+        "com.google.android.apps.safetyhub",
+    )
+
+    private fun hideSideDoors(ctx: Context, dpm: DevicePolicyManager, admin: ComponentName, visible: Set<String>) {
+        for (pkg in SIDE_DOORS - visible) {
+            try {
+                ctx.packageManager.getApplicationInfo(pkg, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES)
+                if (!dpm.isApplicationHidden(admin, pkg) && !dpm.setApplicationHidden(admin, pkg, true)) Log.w(TAG, "could not hide $pkg")
+            } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+            } catch (e: Exception) { Log.w(TAG, "hide $pkg", e) }
+        }
+    }
 
     /** Called by the home screen whenever it is shown while locked. */
     private fun bootCount(ctx: Context) =
