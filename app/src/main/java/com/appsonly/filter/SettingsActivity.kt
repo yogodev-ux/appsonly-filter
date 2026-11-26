@@ -25,6 +25,7 @@ import android.widget.Toast
  */
 @SuppressLint("UseSwitchCompatOrMaterialCode", "MissingPermission")
 class SettingsActivity : Activity() {
+    companion object { const val EXTRA_ACCOUNT_ONLY = "account_only" }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private lateinit var col: LinearLayout
@@ -40,14 +41,20 @@ class SettingsActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(32), dp(20), dp(32))
         }
-        title("Settings", 24f)
-        wifiSection()
-        bluetoothSection()
-        soundSection()
-        displaySection()
-        flashlightSection()
-        lockSection()
-        accountSection()
+        if (intent.getBooleanExtra(EXTRA_ACCOUNT_ONLY, false)) {
+            // From the home screen's "Google account" tile: everything else is in the
+            // phone's real Settings app.
+            accountSection()
+        } else {
+            title("Settings", 24f)
+            wifiSection()
+            bluetoothSection()
+            soundSection()
+            displaySection()
+            flashlightSection()
+            lockSection()
+            accountSection()
+        }
         setContentView(ScrollView(this).apply { addView(col) })
     }
 

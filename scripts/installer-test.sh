@@ -41,6 +41,7 @@ CUST=(--name "Dana Test" --phone "+1 212 555 0100" --email "dana@example.com" --
 java -jar "$JAR" --cli --yes --apk "$APK" --adb "$(command -v adb)" --log-dir "$OUT/installer-logs" "${CUST[@]}" | tee "$OUT/installer-run.txt"
 grep -q "SETUP OK" "$OUT/installer-run.txt" && pass "Installer finishes" || fail "Installer finishes" "$(tail -3 "$OUT/installer-run.txt")"
 sh_ dumpsys device_policy | grep -A3 "Device Owner" | grep -q "$PKG" && pass "Apps Only is Device Owner without a factory reset" || fail "Apps Only is Device Owner"
+sh_ dumpsys package $PKG | grep -q "android.permission.WRITE_SECURE_SETTINGS: granted=true" && pass "Screen guard allowed by the installer" || fail "Screen guard allowed by the installer"
 sh_ pm list packages -d | grep -q com.appsonly.testaccount && fail "Account app switched back on" "still disabled" || pass "Account app switched back on"
 sh_ dumpsys account | grep -q "type=com.appsonly.testaccount" && pass "The account is still there" || fail "The account is still there"
 grep -q "Customer details and removal code saved" "$OUT/installer-run.txt" && pass "Customer details reach the phone" || fail "Customer details reach the phone"
