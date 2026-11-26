@@ -67,6 +67,8 @@ class DevCheckReceiver : BroadcastReceiver() {
  */
 class DevTamperLogReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        // --es event <name>: record a test tamper event first (to test the reports to the server).
+        intent.getStringExtra("event")?.let { TamperLog.record(context, it, "test") }
         resultData = TamperLog.read(context).takeLast(30).joinToString(" | ")
     }
 }

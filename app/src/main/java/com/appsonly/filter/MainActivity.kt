@@ -72,6 +72,7 @@ class MainActivity : Activity() {
     private fun render() {
         val cfg = Prefs.load(this)
         when {
+            License.wasRemoved(this) && !LockPolicy.isDeviceOwner(this) -> showRemoved()
             !LockPolicy.isDeviceOwner(this) -> showNotOwner()
             !cfg.locked -> showSetup()
             !License.isPaid(this) -> {
@@ -87,6 +88,14 @@ class MainActivity : Activity() {
                 KioskMode.enter(this)
                 // Catch anything installed since last time, then refresh the icons.
                 app.enforceAsync { runOnUiThread { if (!isFinishing) showHome(Prefs.load(this)) } }
+                // Pick up orders from the portal (lock again, remove) without waiting for the
+                // 15-minute watchdog.
+                app.worker.execute {
+                    if (License.refreshIfStale(this, 5 * 60_000L)) {
+                        if (LockPolicy.isDeviceOwner(this)) LockPolicy.enforce(this)
+                        runOnUiThread { if (!isFinishing) render() }
+                    }
+                }
             }
         }
     }
@@ -110,6 +119,18 @@ class MainActivity : Activity() {
         textSize = size
         if (bold) typeface = Typeface.DEFAULT_BOLD
         setPadding(0, dp(6), 0, dp(6))
+    }
+
+    // ---------- the filter was removed ----------
+
+    private fun showRemoved() {
+        val col = column()
+        col.addView(text("The filter is removed", 22f, bold = true))
+        col.addView(text(
+            "This is a normal phone again. All apps and settings are back.\n\n" +
+                "You can uninstall Apps Only in Settings, Apps."
+        ))
+        setContentView(col)
     }
 
     // ---------- locked but not paid yet (step 4) ----------

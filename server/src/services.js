@@ -58,6 +58,7 @@ export function createServices({ store, setStatus, mailer, baseUrl, now = () => 
       phone: d.customer?.phone ?? '',
       email: d.customer?.email ?? '',
       hasRemovalCode: Boolean(d.removalCodeHash),
+      hasUninstallCode: Boolean(d.uninstallCode),
       model: d.model ?? '',
       createdAt: d.createdAt,
       paidAt: d.paidAt ?? null,
@@ -65,6 +66,14 @@ export function createServices({ store, setStatus, mailer, baseUrl, now = () => 
       removedSeenAt: d.removedSeenAt ?? null,
       history: d.history ?? [],
     };
+  }
+
+  /**
+   * The phone's one-time uninstall code, for a phone that can't go online. Only shown once the
+   * filter was removed (with the customer's code, or by the owner), so it never skips that check.
+   */
+  function uninstallCodeFor(d) {
+    return d.status === 'removed' ? d.uninstallCode ?? '' : '';
   }
 
   /** Name, phone number (digits only are compared) or email; at least 3 characters. */
@@ -224,7 +233,7 @@ export function createServices({ store, setStatus, mailer, baseUrl, now = () => 
   }
 
   return {
-    customerView, searchCustomers, addAlert, listAlerts, handleAlert, checkUnpaid,
+    customerView, uninstallCodeFor, searchCustomers, addAlert, listAlerts, handleAlert, checkUnpaid,
     removeWithCode, removeOverride, setPaid, sendCodeReset, resetPage, resetSubmit,
   };
 }

@@ -56,3 +56,16 @@ test('staff send a reset email; staff have no owner actions', async () => {
   assert.equal((await store.getDevice(a.deviceId)).status, 'unpaid');
   assert.equal((await get('/staff/customers/dev_nope')).status, 404);
 });
+
+test("the phone's uninstall code is shown only after removal, and only until the phone confirms", async () => {
+  const { store, form, get, staff } = await setup();
+  const d = (await store.listDevices())[0];
+  d.uninstallCode = 'ABCD-EFGH-JK23';
+  await store.putDevice(d);
+  assert.doesNotMatch(await (await get(`/staff/customers/${d.id}`)).text(), /ABCD-EFGH-JK23/);
+  await form(`/staff/customers/${d.id}/remove`, { code: 'eli-secret-1', reason: 'Phone is offline' }, staff);
+  assert.match(await (await get(`/staff/customers/${d.id}`)).text(), /ABCD-EFGH-JK23/);
+  d.removedSeenAt = new Date().toISOString();
+  await store.putDevice(d);
+  assert.doesNotMatch(await (await get(`/staff/customers/${d.id}`)).text(), /ABCD-EFGH-JK23/);
+});
