@@ -108,6 +108,10 @@ is_ok_top() {
     com.android.phone/.EmergencyDialer|com.android.phone/com.android.phone.EmergencyDialer) return 0;;
     # An allowed app asking for a permission (e.g. Contacts on first start).
     *permissioncontroller/*GrantPermissionsActivity) return 0;;
+    # Play services' invisible add-account starter: it shows nothing (the screen stays on the
+    # allowed app), adding accounts is blocked by the no_modify_accounts restriction, and the
+    # visible add-account pages after it are closed by the guard.
+    com.google.android.gms/.auth.uiflows.addaccount.AccountIntroActivity) return 0;;
   esac
   is_ok_pkg "${1%%/*}"
 }
