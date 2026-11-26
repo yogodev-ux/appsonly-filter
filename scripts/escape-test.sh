@@ -118,7 +118,9 @@ check_front() {
     # The guard may need a moment more on a slow screen (Play services loads slowly):
     # closed within ~4 s more still counts, and is reported.
     sleep 4; top2=$(resumed)
-    if [ "${SAME_TASK:-0}" = 1 ] && is_ok_top "$top2"; then
+    # Risky Settings screens open in their own window (Settings is an allowed app) and
+    # are closed by the guard too, so they get the same grace.
+    if { [ "${SAME_TASK:-0}" = 1 ] || [ "$p" = com.android.settings ]; } && is_ok_top "$top2"; then
       pass "$name"; info "$name: closed by the guard after ~6 s ($top)"
     else
       fail "$name" "opened $top"; [ "${SAME_TASK:-0}" = 1 ] && sh_ am force-stop "$p" >/dev/null
