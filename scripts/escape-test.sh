@@ -97,6 +97,8 @@ is_ok_top() {
   case "$1" in
     android/com.android.internal.app.ResolverActivity|android/com.android.internal.app.ChooserActivity|com.android.intentresolver/*) return 0;;
     com.android.phone/.EmergencyDialer|com.android.phone/com.android.phone.EmergencyDialer) return 0;;
+    # An allowed app asking for a permission (e.g. Contacts on first start).
+    *permissioncontroller/*GrantPermissionsActivity) return 0;;
   esac
   is_ok_pkg "${1%%/*}"
 }
