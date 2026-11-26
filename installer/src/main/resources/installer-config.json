@@ -1,0 +1,7 @@
+{
+  "_comment": "log_upload_url is filled in when the server exists (step 4). Empty = logs are only saved on this PC.",
+  "log_upload_url": "",
+  "package": "com.appsonly.filter",
+  "admin_receiver": ".AdminReceiver",
+  "main_activity": ".MainActivity"
+}
