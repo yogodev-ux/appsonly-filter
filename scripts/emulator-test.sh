@@ -172,7 +172,9 @@ expect com.android.vending www.wikipedia.org BLOCKED
 BEFORE=$(grep -c "using store guard" "$OUT/logcat.txt")
 sleep 20 # let background apps make some lookups
 AFTER=$(grep -c "using store guard" "$OUT/logcat.txt")
-[ $((AFTER-BEFORE)) -le 2 ] && pass "Lock check isn't running in a loop (battery)" || fail "Lock check isn't running in a loop (battery)" "$((AFTER-BEFORE)) runs in 20s"
+# The old bug re-ran the check every second (~20 runs). A few runs are normal: each app the
+# Play Store updates in the background triggers one (3 s apart at most once).
+[ $((AFTER-BEFORE)) -le 5 ] && pass "Lock check isn't running in a loop (battery)" || fail "Lock check isn't running in a loop (battery)" "$((AFTER-BEFORE)) runs in 20s"
 grep "BLOCKED" "$OUT/logcat.txt" | sed 's/.*BLOCKED/BLOCKED/' | sort | uniq -c | sort -rn > "$OUT/blocked-lookups.txt" || true
 echo "---- app log (errors and tamper events) ----"
 grep -E "AppsOnlyTamper|W/AppsOnly|E/AppsOnly|FRP" "$OUT/logcat.txt" | grep -v "could not hide" | head -40
