@@ -123,6 +123,14 @@
             </intent-filter>
         </receiver>
 
+        <!-- The Windows installer hands over the customer's details and removal code here (adb shell
+             holds DUMP; ordinary apps can't). Accepted only before the phone is locked. -->
+        <receiver
+            android:name=".SetupInfoReceiver"
+            android:exported="true"
+            android:directBootAware="true"
+            android:permission="android.permission.DUMP" />
+
         <receiver
             android:name=".BootReceiver"
             android:exported="false"

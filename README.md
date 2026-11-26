@@ -217,3 +217,15 @@ another phone (the phone itself can't browse), plus Settings for Wi-Fi. The phon
   Release builds need `-PlicenseServer=https://... -PlicensePublicKey=...` and the real private
   key in the server's `LICENSE_PRIVATE_JWK` secret (`npm run keys` makes a pair).
 - Test builds can skip payment with `--ez paid true` on the dev lock broadcast.
+
+## Portals, part 1: customer details and removal code (installer)
+
+Plan: see the "Portals plan" doc. Part 1 is done here:
+
+- The Windows installer now asks for the customer's full name, phone number, email, and a removal
+  code they choose (typed twice, 6+ characters, no spaces). A new setup won't start without them.
+  Command line: `--name --phone --email --removal-code`.
+- After Device Owner is set, the installer hands these to the app (`SetupInfoReceiver`, adb-only,
+  refused once the phone is locked). Nothing of it goes into the setup log.
+- The app sends them to the server (`POST /v1/customer`) when it's online, then deletes them from
+  the phone. The server keeps the removal code only as a PBKDF2 hash and never shows it.

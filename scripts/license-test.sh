@@ -25,6 +25,10 @@ echo "== set up and lock, without paying"
 adb install -r -t "$APK" >/dev/null
 sh_ dpm set-device-owner --user 0 $PKG/.AdminReceiver | grep -q Success && pass "Becomes Device Owner" || fail "Becomes Device Owner"
 APPOK=com.google.android.deskclock
+# What the Windows installer does after Device Owner: hand over the customer's details.
+CUSTB64=$(printf '{"name":"Dana Test","phone":"+1 212 555 0100","email":"dana@example.com","removalCode":"ci-removal-42"}' | base64 -w0)
+R=$(sh_ am broadcast -n $PKG/.SetupInfoReceiver --es data "$CUSTB64")
+echo "$R" | grep -q 'data="saved"' && pass "Phone accepts the customer details from the installer" || fail "Phone accepts the customer details from the installer" "$R"
 sh_ am broadcast -n $PKG/.dev.DevLockReceiver --es allowed $APPOK >/dev/null
 sleep 5
 L=$(lic); echo "license: $L"
@@ -36,6 +40,11 @@ sh_ am start -n $PKG/.MainActivity >/dev/null; sleep 4
 adb exec-out screencap -p > "$OUT/1-pay-screen.png"
 screen_has "Almost done" && screen_has "$CODE" && pass "Phone shows how to pay, with its code" || fail "Phone shows how to pay, with its code"
 curl -s "$SERVER/pay/$CODE" | grep -q "Pay now" && pass "Payment page opens for that code" || fail "Payment page opens for that code"
+DEV=$(curl -s -H "authorization: Bearer ci-admin" $SERVER/v1/admin/devices)
+echo "$DEV" | grep -q '"name":"Dana Test"' && echo "$DEV" | grep -q '"hasRemovalCode":true' && pass "Server has the customer details and the removal code" || fail "Server has the customer details and the removal code" "$DEV"
+echo "$DEV" | grep -q "ci-removal-42" && fail "Removal code is never shown in plain text" || pass "Removal code is never shown in plain text"
+R=$(sh_ am broadcast -n $PKG/.SetupInfoReceiver --es data "$CUSTB64")
+echo "$R" | grep -q "already locked" && pass "A locked phone refuses new customer details" || fail "A locked phone refuses new customer details" "$R"
 
 echo "== pay (test mode) $(date +%T)"
 curl -s -o /dev/null -X POST "$SERVER/pay/$CODE/test"
