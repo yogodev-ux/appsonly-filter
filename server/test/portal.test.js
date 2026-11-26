@@ -170,3 +170,9 @@ test('a redirect after an action never leaves the site', async () => {
   const r = await form(`/portal/device/${a.deviceId}/unlock`, { reason: 'x', back: '//evil.example/' }, owner.cookie);
   assert.match(r.headers.get('location'), /^\/support\?/);
 });
+
+test('pages keep the Origin header on our own form posts (no "no-referrer" policy)', async () => {
+  const { call } = await setup();
+  const r = await call('/login');
+  assert.equal(r.headers.get('referrer-policy'), 'same-origin');
+});

@@ -51,7 +51,7 @@ function page(title, body, who, status = 200, headers = {}) {
         'cache-control': 'no-store',
         'x-frame-options': 'DENY',
         'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
-        'referrer-policy': 'no-referrer',
+        'referrer-policy': 'same-origin',
         ...headers,
       },
     },
