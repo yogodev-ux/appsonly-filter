@@ -35,6 +35,7 @@ class ScreenGuard : AccessibilityService() {
             logOnce("shade_before_kiosk")
             return
         }
+        if (pkg == "com.google.android.gms" && (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) Log.d(TAG, "guard saw $pkg/$cls")
         val title = event.text.joinToString(" ").trim()
         if (pkg == settingsPkg) Log.i(TAG, "Settings screen: $cls \"$title\"")
         if (!blocked(this, pkg, cls, title)) return
