@@ -296,7 +296,9 @@ else
   sh_ cmd statusbar collapse >/dev/null
   # 2) Home works while the sign-in is open.
   if open_signin && ! ours; then
-    home; sleep 2
+    home
+    # Give a busy emulator up to 8 s to switch screens.
+    for i in 1 2 3 4; do sleep 2; ours && break; done
     ours && pass "Home button leaves the sign-in" || fail "Home button leaves the sign-in" "$(resumed)"
     [ "$(signin_state)" = "active=false" ] && pass "Account changes blocked again after Home" || fail "Account changes blocked again after Home" "$(signin_state)"
   fi
@@ -323,11 +325,12 @@ else
 fi
 # An update of an allowed app must not hide it: reinstall the allowed app's own APK.
 if [ -n "$FIRST_ALLOWED" ]; then
-  paths=$(sh_ pm path "$FIRST_ALLOWED" | sed 's/^package://')
-  n=$(echo "$paths" | grep -c .)
-  i=0; files=""
-  for f in $paths; do i=$((i+1)); sh_ cp "$f" "/data/local/tmp/upd-$i.apk" >/dev/null; files="$files /data/local/tmp/upd-$i.apk"; done
-  if [ "$n" = 1 ]; then r=$(sh_ pm install -r $files); else r=$(sh_ "pm install-create -r | grep -o '[0-9]*' > /data/local/tmp/sid; s=\$(cat /data/local/tmp/sid); i=0; for f in $files; do i=\$((i+1)); pm install-write \$s p\$i \$f; done; pm install-commit \$s"); fi
+  # Copy the app's own APK file(s) to this machine and reinstall them as an update.
+  rm -rf "$OUT/upd"; mkdir -p "$OUT/upd"; i=0
+  for f in $(sh_ pm path "$FIRST_ALLOWED" | sed 's/^package://' | tr -d '\r'); do
+    i=$((i+1)); adb pull "$f" "$OUT/upd/p$i.apk" >/dev/null 2>&1
+  done
+  r=$(adb install-multiple -r -t "$OUT"/upd/*.apk 2>&1 | tail -3)
   echo "update of $FIRST_ALLOWED: $r"
   sleep 8
   if echo "$r" | grep -q Success; then
@@ -335,7 +338,7 @@ if [ -n "$FIRST_ALLOWED" ]; then
   else
     fail "Allowed app can be updated" "$r"
   fi
-  sh_ rm -f /data/local/tmp/upd-*.apk /data/local/tmp/sid >/dev/null
+  rm -rf "$OUT/upd"
 fi
 echo "(A real Play Store auto-update needs a signed-in Google account, which the cloud emulator doesn't have.)"
 
