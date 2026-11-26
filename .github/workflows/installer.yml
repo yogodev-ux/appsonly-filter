@@ -78,8 +78,8 @@ jobs:
           target: playstore
           arch: x86_64
           profile: pixel_6
-          # Same as the other emulator jobs: on the default 2 GB emulator adb drops right
-          # after boot on the shared CI machine ("error: closed" before the test starts).
+          # More memory and cores than the default, so the system doesn't stall
+          # ("System UI isn't responding") on the shared CI machine.
           ram-size: 4096M
           cores: 4
           disable-animations: true

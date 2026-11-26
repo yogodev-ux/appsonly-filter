@@ -40,11 +40,45 @@ class MainActivity : Activity() {
         render()
     }
 
+    override fun onPause() {
+        super.onPause()
+        main.removeCallbacks(licensePoll)
+        polling = false
+    }
+
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** While the phone is locked but not paid yet, ask the server every 30 seconds. */
+    private var polling = false
+
+    private val licensePoll = object : Runnable {
+        override fun run() {
+            val cfg = Prefs.load(this@MainActivity)
+            if (!cfg.locked || License.isPaid(this@MainActivity)) { polling = false; return }
+            checkLicense()
+            main.postDelayed(this, 30_000)
+        }
+    }
+
+    private fun checkLicense() {
+        app.worker.execute {
+            License.refresh(this)
+            // Re-apply the lock: shows (or hides) the allowed apps to match.
+            LockPolicy.enforce(this)
+            runOnUiThread { if (!isFinishing) render() }
+        }
+    }
+
     private fun render() {
         val cfg = Prefs.load(this)
         when {
             !LockPolicy.isDeviceOwner(this) -> showNotOwner()
             !cfg.locked -> showSetup()
+            !License.isPaid(this) -> {
+                showPayGate()
+                KioskMode.enter(this)
+                if (!polling) { polling = true; main.post(licensePoll) }
+            }
             else -> {
                 showHome(cfg)
                 // Backup for the admin callback: if kiosk mode was switched off behind our
@@ -76,6 +110,36 @@ class MainActivity : Activity() {
         textSize = size
         if (bold) typeface = Typeface.DEFAULT_BOLD
         setPadding(0, dp(6), 0, dp(6))
+    }
+
+    // ---------- locked but not paid yet (step 4) ----------
+
+    private fun showPayGate() {
+        val st = License.state(this)
+        val col = column()
+        col.addView(text("Almost done", 24f, bold = true))
+        col.addView(text("Your apps open as soon as this phone is paid. It's a one-time payment, with no subscription."))
+        if (st.payCode.isEmpty()) {
+            col.addView(text("Connecting to Apps Only... Make sure the phone is on Wi-Fi (Settings below).", 16f))
+        } else {
+            col.addView(text("On a computer or another phone, go to:", 16f))
+            col.addView(text(st.payUrl, 18f, bold = true).apply { setTextIsSelectable(true) })
+            col.addView(text("Phone code: ${st.payCode}", 20f, bold = true).apply { tag = "pay_code" })
+        }
+        if (st.lastError.isNotEmpty()) {
+            col.addView(text("Couldn't reach Apps Only. Check Wi-Fi in Settings. (${st.lastError})", 14f).apply {
+                setTextColor(Color.rgb(176, 0, 32))
+            })
+        }
+        col.addView(Button(this).apply {
+            text = "Check again"
+            setOnClickListener { isEnabled = false; checkLicense() }
+        })
+        col.addView(Button(this).apply {
+            text = "Settings (Wi-Fi)"
+            setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
+        })
+        setContentView(col)
     }
 
     // ---------- state 1: not Device Owner ----------
