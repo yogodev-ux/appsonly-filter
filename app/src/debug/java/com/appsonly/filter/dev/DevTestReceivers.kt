@@ -82,3 +82,17 @@ class DevStatusReceiver : BroadcastReceiver() {
         resultData = "user_control_disabled=$userControl"
     }
 }
+
+/**
+ * Pretends to be a slow phone: after the next boot, kiosk mode starts only once the phone
+ * has been up for this many milliseconds (0 turns it off):
+ *   adb shell am broadcast -n com.appsonly.filter/.dev.DevKioskDelayReceiver --el ms 60000
+ */
+class DevKioskDelayReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val ms = intent.getLongExtra("ms", 0L)
+        com.appsonly.filter.KioskMode.testPrefs(context).edit()
+            .putLong(com.appsonly.filter.KioskMode.TEST_DELAY_KEY, ms).commit()
+        resultData = "DELAY=$ms"
+    }
+}

@@ -34,5 +34,10 @@
             android:name=".dev.DevStatusReceiver"
             android:exported="true"
             android:permission="android.permission.DUMP" />
+        <receiver
+            android:name=".dev.DevKioskDelayReceiver"
+            android:exported="true"
+            android:directBootAware="true"
+            android:permission="android.permission.DUMP" />
     </application>
 </manifest>

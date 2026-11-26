@@ -60,6 +60,13 @@ object KioskMode {
     fun enter(activity: Activity) {
         val am = activity.getSystemService(ActivityManager::class.java)
         if (am.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE) return
+        // Test builds only: pretend to be a slow phone, so the escape test can try to get
+        // around the lock in the time before kiosk mode starts.
+        val wait = testDelayLeft(activity)
+        if (wait > 0) {
+            activity.window.decorView.postDelayed({ if (!activity.isFinishing) enter(activity) }, wait)
+            return
+        }
         val dpm = LockPolicy.dpm(activity)
         if (!dpm.isLockTaskPermitted(activity.packageName)) return
         try {
@@ -67,6 +74,18 @@ object KioskMode {
             prefs(activity).edit().putInt("entered_boot", bootCount(activity)).apply()
         } catch (e: Exception) { Log.w(TAG, "startLockTask", e) }
     }
+
+    /** Milliseconds left of the test-only "slow phone" delay after boot (0 in real builds). */
+    private fun testDelayLeft(ctx: Context): Long {
+        if ((ctx.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0) return 0
+        val delay = prefs(ctx).getLong(TEST_DELAY_KEY, 0L)
+        return (delay - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0)
+    }
+
+    /** Key read by [testDelayLeft]; written only by the debug-build test hook. */
+    const val TEST_DELAY_KEY = "test_kiosk_delay_ms"
+
+    fun testPrefs(ctx: Context) = prefs(ctx)
 
     fun clear(dpm: DevicePolicyManager, admin: ComponentName) {
         try { dpm.setLockTaskPackages(admin, emptyArray()) } catch (e: Exception) { Log.w(TAG, "lock task clear", e) }
