@@ -82,6 +82,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Watchdog: re-applies the lock and restarts the web filter every 15 minutes. -->
+        <service
+            android:name=".WatchdogJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <!-- Always-on web filter: carries only DNS lookups and blocks sites not on the allow-list. -->
         <service
             android:name=".FilterVpnService"

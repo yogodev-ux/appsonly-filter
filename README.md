@@ -52,6 +52,31 @@ anything else. Bluetooth permissions are for the Bluetooth switch.
 Not in this step: FRP and the rest of the tamper protection (step 2), Windows
 installer (step 3), payment gate (step 4), portals (step 5).
 
+## Step 2: tamper protection
+
+- Factory reset from Settings, safe mode, adding/removing users, changing date/time: blocked.
+- **Factory Reset Protection**: after a reset from recovery mode (buttons at power-on, which no
+  app can block), the phone can only be set up again with the company Google account.
+  Set the account's numeric Google ID in `TamperConfig.kt` (`FRP_ACCOUNT_IDS`); empty = off for now.
+- Automatic date, time and time zone are forced on.
+- USB debugging and Developer options: blocked and forced off in **release** builds
+  (debug builds keep them so adb testing works).
+- The customer can't force-stop the app or clear its data (Android 11+).
+- The web filter is an always-on VPN, so Android restarts it if it is killed; a watchdog job
+  also re-applies the whole lock every 15 minutes and after reboot.
+- **Tamper log** (on the phone, for the support portal in step 5): wrong PINs, leaving kiosk
+  mode, the app being force-stopped or killed, the web filter being revoked, time settings
+  changed, new apps appearing (hidden right away), USB debugging found on.
+  Debug builds: `adb shell am broadcast -n com.appsonly.filter/.dev.DevTamperLogReceiver`,
+  or `adb logcat -s AppsOnlyTamper`.
+
+## Automated emulator test
+
+`.github/workflows/emulator-test.yml` runs `scripts/emulator-test.sh` on every push: an Android 13
+emulator with the Play Store installs the debug APK, makes it Device Owner, locks it with a test
+allow-list and checks the lock, the web filter, tamper protection and a reboot. The run's
+**emulator-test** artifact has screen recordings, screenshots, logcat and a pass/fail summary.
+
 ## Get the APK
 
 Every push builds a debug APK on GitHub Actions: open the **Actions** tab, pick the latest

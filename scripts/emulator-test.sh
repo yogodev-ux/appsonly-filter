@@ -61,7 +61,7 @@ echo "allowed: $ALLOWED" | tee "$OUT/allowed.txt"
 FIRST_ALLOWED=${ALLOWED%%,*}
 
 echo "== lock"
-LOCK=$(sh_ am broadcast -n $PKG/.dev.DevLockReceiver --es allowed "$ALLOWED" --ez phone true)
+LOCK=$(sh_ am broadcast -n $PKG/.dev.DevLockReceiver --es allowed "$ALLOWED" --ez phone true --es frp 123456789012345678901)
 echo "$LOCK" > "$OUT/lock.txt"
 echo "$LOCK" | grep -q LOCKED && pass "Locks with allow-list ($ALLOWED)" || fail "Locks with allow-list" "$LOCK"
 sleep 5
@@ -160,10 +160,43 @@ sleep 20 # let background apps make some lookups
 AFTER=$(grep -c "using store guard" "$OUT/logcat.txt")
 [ $((AFTER-BEFORE)) -le 2 ] && pass "Lock check isn't running in a loop (battery)" || fail "Lock check isn't running in a loop (battery)" "$((AFTER-BEFORE)) runs in 20s"
 grep "BLOCKED" "$OUT/logcat.txt" | sed 's/.*BLOCKED/BLOCKED/' | sort | uniq -c | sort -rn > "$OUT/blocked-lookups.txt" || true
-echo "---- web filter log (first 80 lines) ----"
-grep -E "AppsOnlyFilter|AppsOnly" "$OUT/logcat.txt" | head -80
+echo "---- app log (errors and tamper events) ----"
+grep -E "AppsOnlyTamper|W/AppsOnly|E/AppsOnly|FRP" "$OUT/logcat.txt" | grep -v "could not hide" | head -40
 echo "---- blocked lookups ----"
 head -40 "$OUT/blocked-lookups.txt"
+
+
+echo "== step 2: tamper protection"
+tamperlog() { sh_ am broadcast -n $PKG/.dev.DevTamperLogReceiver | tr -d '\r'; }
+sh_ dumpsys device_policy > "$OUT/dumpsys-device-policy.txt"
+grep -iE -A3 "user ?control ?disabled" "$OUT/dumpsys-device-policy.txt" | grep -q $PKG \
+  && pass "App can't be force-stopped or cleared by the user" || fail "App can't be force-stopped or cleared by the user" "not in user-control-disabled list"
+[ "$(sh_ settings get global auto_time)" = "1" ] && pass "Automatic date/time on" || fail "Automatic date/time on" "$(sh_ settings get global auto_time)"
+if grep -q "FRP set" "$OUT/logcat.txt"; then pass "Factory Reset Protection can be set (test account ID)"
+elif grep -q "FRP not supported" "$OUT/logcat.txt"; then pass "Factory Reset Protection: not supported on this emulator (needs a real phone)"
+else fail "Factory Reset Protection" "no FRP result in log"; fi
+
+# Tamper: turn automatic time off behind our back -> the next check turns it back on and logs it.
+sh_ settings put global auto_time 0 >/dev/null
+home; sh_ am start -n $PKG/.MainActivity >/dev/null; sleep 6
+[ "$(sh_ settings get global auto_time)" = "1" ] && pass "Automatic time is turned back on after tampering" || fail "Automatic time is turned back on" "$(sh_ settings get global auto_time)"
+tamperlog | grep -q auto_time_restored && pass "Tamper log: time change recorded" || fail "Tamper log: time change recorded" "$(tamperlog)"
+
+# Tamper: leave kiosk mode -> logged, and Home brings kiosk mode back.
+sh_ am task lock stop >/dev/null; sleep 2
+tamperlog | grep -q kiosk_mode_exited && pass "Tamper log: leaving kiosk mode recorded" || fail "Tamper log: leaving kiosk mode recorded" "$(tamperlog)"
+home; sleep 3
+sh_ dumpsys activity activities | grep -m1 -i mLockTaskModeState | grep -q LOCKED && pass "Kiosk mode comes back after Home" || fail "Kiosk mode comes back after Home"
+
+# Tamper: force-stop the app -> web filter restarts by itself, and it is logged.
+STARTS_BEFORE=$(grep -c "Web filter started" "$OUT/logcat.txt")
+sh_ am force-stop $PKG; sleep 30
+STARTS_AFTER=$(grep -c "Web filter started" "$OUT/logcat.txt")
+[ "$STARTS_AFTER" -gt "$STARTS_BEFORE" ] && pass "Web filter restarts by itself after the app is killed" || fail "Web filter restarts by itself after the app is killed"
+home; sleep 5
+tamperlog | grep -qE "app_force_stopped|app_stopped_by_user" && pass "Tamper log: force-stop recorded" || fail "Tamper log: force-stop recorded" "$(tamperlog)"
+resumed | grep -q "$PKG" && pass "Home screen back after force-stop" || fail "Home screen back after force-stop" "$(resumed)"
+tamperlog > "$OUT/tamper-log.txt"
 
 echo "== reboot keeps the lock"
 stop_rec

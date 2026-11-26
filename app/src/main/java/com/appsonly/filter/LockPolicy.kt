@@ -62,10 +62,23 @@ object LockPolicy {
         return result - AppScanner.browsers(ctx)
     }
 
+    /** Apps hidden during the current enforce run (logged as tamper events after the first lock). */
+    private val lastHidden = mutableListOf<String>()
+
     @Synchronized
     fun enforce(ctx: Context) {
         val cfg = Prefs.load(ctx)
         if (!cfg.locked || !isDeviceOwner(ctx)) return
+        lastHidden.clear()
+        try { enforceLocked(ctx, cfg) } finally {
+            if (lastHidden.isNotEmpty() && Prefs.lockedOnce(ctx)) {
+                TamperLog.record(ctx, "new_app_hidden", lastHidden.joinToString())
+            }
+            Prefs.markLockedOnce(ctx)
+        }
+    }
+
+    private fun enforceLocked(ctx: Context, cfg: LockConfig) {
         val dpm = dpm(ctx)
         val admin = AdminReceiver.component(ctx)
 
@@ -121,6 +134,7 @@ object LockPolicy {
         }
         StoreGuard.apply(ctx, dpm, admin)
         KioskMode.configure(ctx, dpm, admin, visible)
+        TamperGuard.apply(ctx, dpm, admin)
 
         // 4. Device Owner extras for our own Settings screen and web filter.
         DeviceControls.prepare(ctx)
@@ -138,7 +152,8 @@ object LockPolicy {
     private fun hide(dpm: DevicePolicyManager, admin: ComponentName, pkg: String) {
         try {
             if (dpm.isApplicationHidden(admin, pkg)) return
-            if (!dpm.setApplicationHidden(admin, pkg, true)) Log.w(TAG, "could not hide $pkg")
+            if (dpm.setApplicationHidden(admin, pkg, true)) lastHidden += pkg
+            else Log.w(TAG, "could not hide $pkg")
         } catch (e: Exception) {
             Log.w(TAG, "hide $pkg", e)
         }
@@ -181,6 +196,11 @@ object LockPolicy {
         }
         dpm.clearPackagePersistentPreferredActivities(admin, ctx.packageName)
         KioskMode.clear(dpm, admin)
+        TamperGuard.cancelWatchdog(ctx)
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            try { dpm.setUserControlDisabledPackages(admin, emptyList()) } catch (e: Exception) { Log.w(TAG, "user control", e) }
+            try { dpm.setFactoryResetProtectionPolicy(admin, null) } catch (e: Exception) { Log.w(TAG, "frp clear", e) }
+        }
         try { dpm.setAlwaysOnVpnPackage(admin, null, false) } catch (e: Exception) { Log.w(TAG, "vpn off", e) }
         Prefs.clear(ctx)
         dpm.clearDeviceOwnerApp(ctx.packageName)

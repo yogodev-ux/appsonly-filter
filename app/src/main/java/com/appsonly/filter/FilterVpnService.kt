@@ -43,6 +43,7 @@ class FilterVpnService : VpnService() {
     }
 
     override fun onRevoke() {
+        TamperLog.record(this, "web_filter_revoked")
         stop()
         super.onRevoke()
     }
