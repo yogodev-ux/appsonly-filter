@@ -319,7 +319,9 @@ if [ -f "$NEW_APK" ]; then
   ok=0
   for i in $(seq 1 10); do sleep 1; [ "$(hidden_state $NEW_PKG)" = "hidden=true" ] && { ok=1; break; }; done
   [ $ok = 1 ] && pass "Newly installed app is hidden within ${i}s (app with no icon)" || fail "Newly installed app is hidden" "$(hidden_state $NEW_PKG) / $(tail -1 "$OUT/new-app-install.txt")"
-  tamperlog | grep -q "new_app_hidden.*$NEW_PKG" && pass "Tamper log: new app hidden recorded" || fail "Tamper log: new app hidden recorded" "$(tamperlog)"
+  # The log entry is written when the lock check finishes, a few seconds after the app is hidden.
+  ok=0; for i in $(seq 1 15); do tamperlog | grep -q "new_app_hidden.*$NEW_PKG" && { ok=1; break; }; sleep 1; done
+  [ $ok = 1 ] && pass "Tamper log: new app hidden recorded" || fail "Tamper log: new app hidden recorded" "$(tamperlog)"
 else
   fail "Newly installed app is hidden" "test APK not built: $NEW_APK"
 fi
