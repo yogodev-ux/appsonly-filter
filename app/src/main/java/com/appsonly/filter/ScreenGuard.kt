@@ -35,6 +35,7 @@ class ScreenGuard : AccessibilityService() {
             logOnce("shade_before_kiosk")
             return
         }
+        if (pkg == "com.google.android.gms" && (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) Log.d(TAG, "guard saw $pkg/$cls")
         if (!blocked(this, pkg, cls)) return
         Log.i(TAG, "Screen guard closed $pkg/$cls")
         performGlobalAction(GLOBAL_ACTION_HOME)
