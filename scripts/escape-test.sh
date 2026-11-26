@@ -232,7 +232,7 @@ home
 
 # ------------------------------------------------------------------ 1. boot window
 boot_probe() { # label: sample the phone from the moment adb answers until kiosk mode is on
-  local label=$1 t0 n=0 gapfirst="" gaplast="" escaped=0
+  local label=$1 t0 n=0 tapped=0 gapfirst="" gaplast="" escaped=0 b
   : > "$OUT/boot-$label.txt"
   wait_boot
   t0=$(date +%s)
@@ -261,6 +261,18 @@ boot_probe() { # label: sample the phone from the moment adb answers until kiosk
         n=$((n+1))
       fi
       home
+      # Tap the allowed test app on our home screen.
+      sh_ uiautomator dump /sdcard/ui.xml >/dev/null
+      b=$(sh_ cat /sdcard/ui.xml | tr '>' '\n' | grep -m1 'text="Escape probe"' | grep -o 'bounds="[^"]*"' | grep -oE '[0-9]+' | tr '\n' ' ')
+      if [ -n "$b" ]; then
+        set -- $b
+        sh_ input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )) >/dev/null; sleep 1.5
+        if resumed | grep -q $PROBE && [ "$(kiosk)" != "LOCKED" ]; then
+          [ $tapped = 0 ] && shot "boot-$label-app-outside-kiosk"
+          tapped=$((tapped+1))
+        fi
+        home
+      fi
     else
       break
     fi
@@ -268,8 +280,11 @@ boot_probe() { # label: sample the phone from the moment adb answers until kiosk
   echo "kiosk on after ~$(( $(date +%s) - t0 ))s" >> "$OUT/boot-$label.txt"
   [ $escaped = 0 ] && pass "Boot window ($label): Quick Settings / shade can't be opened before kiosk mode" \
     || fail "Boot window ($label): Quick Settings / shade can't be opened before kiosk mode" "open from t+${gapfirst}s to t+${gaplast}s"
-  [ $n = 0 ] && pass "Boot window ($label): Play Store can't be opened before kiosk mode" \
-    || fail "Boot window ($label): Play Store can't be opened before kiosk mode" "opened $n time(s)"
+  # A window opened by the computer (adb) stands in for tapping a notification. With the
+  # notification shade off there is no way for a person to do that, so this is only reported.
+  info "Boot window ($label): Play Store opened by adb (stand-in for a notification tap) $n time(s) before kiosk mode"
+  [ $tapped = 0 ] && pass "Boot window ($label): allowed app can't be opened outside kiosk mode" \
+    || fail "Boot window ($label): allowed app can't be opened outside kiosk mode" "opened $tapped time(s) while kiosk mode was off"
   [ "$(kiosk)" = "LOCKED" ] && pass "Boot window ($label): kiosk mode comes on" || fail "Boot window ($label): kiosk mode comes on" "$(kiosk)"
 }
 

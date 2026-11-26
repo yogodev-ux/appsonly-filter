@@ -24,7 +24,11 @@ object KioskMode {
         "com.google.android.documentsui", "com.android.documentsui",
         "com.google.android.providers.media.module", "com.android.providers.media.module",
         "com.android.server.telecom", "com.android.phone", // calls
-        "com.google.android.gms", // Google sign-in (its internet is limited by the web filter)
+        "com.android.intentresolver", // share sheet on Android 13+
+        // Google Play services is NOT listed. Its screens still open inside an allowed app or
+        // inside our own sign-in window (same task), which is all sign-in needs. Listed, it
+        // could open its own window from a notification or link: the full "Google Account"
+        // and "Google settings" screens, which lead on to other Google pages.
     )
 
     private const val FEATURES =
@@ -43,7 +47,29 @@ object KioskMode {
         } catch (e: Exception) {
             Log.w(TAG, "lock task setup", e)
         }
+        // Outside kiosk mode (for example right after a reboot, before our home screen has
+        // started it) the notification shade and Quick Settings stay switched off.
+        if (ctx.getSystemService(ActivityManager::class.java).lockTaskModeState == ActivityManager.LOCK_TASK_MODE_NONE) {
+            setShadeAllowed(ctx, false)
+        }
     }
+
+    /**
+     * Kiosk mode itself keeps Quick Settings off and allows only the notification list, but
+     * kiosk mode ends with every reboot. So the status bar is switched off completely
+     * whenever kiosk mode is off; Android remembers this across a reboot, so a phone starts
+     * up with the status bar already off. It is switched back on once kiosk mode is on.
+     */
+    fun setShadeAllowed(ctx: Context, allowed: Boolean) {
+        try {
+            val dpm = LockPolicy.dpm(ctx)
+            if (!dpm.isDeviceOwnerApp(ctx.packageName)) return
+            if (!dpm.setStatusBarDisabled(AdminReceiver.component(ctx), !allowed)) Log.w(TAG, "status bar not changed")
+        } catch (e: Exception) { Log.w(TAG, "status bar", e) }
+    }
+
+    fun isOn(ctx: Context) =
+        ctx.getSystemService(ActivityManager::class.java).lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
 
     /** Called by the home screen whenever it is shown while locked. */
     private fun bootCount(ctx: Context) =
@@ -72,6 +98,7 @@ object KioskMode {
         try {
             activity.startLockTask()
             prefs(activity).edit().putInt("entered_boot", bootCount(activity)).apply()
+            if (isOn(activity)) setShadeAllowed(activity, true)
         } catch (e: Exception) { Log.w(TAG, "startLockTask", e) }
     }
 
@@ -89,5 +116,6 @@ object KioskMode {
 
     fun clear(dpm: DevicePolicyManager, admin: ComponentName) {
         try { dpm.setLockTaskPackages(admin, emptyArray()) } catch (e: Exception) { Log.w(TAG, "lock task clear", e) }
+        try { dpm.setStatusBarDisabled(admin, false) } catch (e: Exception) { Log.w(TAG, "status bar clear", e) }
     }
 }

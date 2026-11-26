@@ -189,6 +189,15 @@ class MainActivity : Activity() {
             verticalSpacing = dp(16)
             adapter = HomeAdapter(this@MainActivity, entries)
             setOnItemClickListener { _, _, pos, _ ->
+                // Apps open only inside kiosk mode, so an app can't lead anywhere else
+                // (for example while a slow phone is still starting up).
+                if (!KioskMode.isOn(this@MainActivity)) {
+                    KioskMode.enter(this@MainActivity)
+                    if (!KioskMode.isOn(this@MainActivity)) {
+                        Toast.makeText(this@MainActivity, "Starting up, try again in a moment", Toast.LENGTH_SHORT).show()
+                        return@setOnItemClickListener
+                    }
+                }
                 if (entries[pos].packageName == SETTINGS_TILE) {
                     startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
                     return@setOnItemClickListener
