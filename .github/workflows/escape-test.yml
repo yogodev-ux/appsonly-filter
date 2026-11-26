@@ -45,8 +45,8 @@ jobs:
         if: always()
         run: |
           cd test-output/shots 2>/dev/null || exit 0
-          picks=$(ls 00-home.png quick-settings.png notification-shade.png power-menu.png 2>/dev/null
-                  ls From_allowed_app__Play_Store_main_screen.png From_allowed_app__Play_Store_details* 2>/dev/null | head -2
+          picks=$(ls 00-home*.png quick-settings*.png notification-shade*.png power-menu*.png 2>/dev/null
+                  ls From_allowed_app__Play_Store_main_screen*.png 2>/dev/null | head -1
                   ls boot-* sweep-* 2>/dev/null | head -4)
           for f in $picks; do
             if command -v convert >/dev/null; then convert "$f" -resize 360x -quality 60 /tmp/s.jpg; else cp "$f" /tmp/s.jpg; fi

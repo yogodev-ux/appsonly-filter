@@ -296,7 +296,8 @@ boot_probe() { # label: sample the phone from the moment adb answers until kiosk
     f=$(focus)
     top=$(resumed)
     echo "t+${now}s kiosk=$k focus=$f top=$top sb=$(sbflags)" >> "$OUT/boot-$label.txt"
-    if echo "$f" | grep -qi NotificationShade; then
+    # Once kiosk mode is on, the shade may open (notifications only), so that sample doesn't count.
+    if [ "$k" != "LOCKED" ] && echo "$f" | grep -qi NotificationShade; then
       [ -z "$gapfirst" ] && { gapfirst=$now; shot "boot-$label-shade-open"; }
       gaplast=$now; escaped=1
     fi

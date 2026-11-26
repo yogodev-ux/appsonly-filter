@@ -66,9 +66,16 @@ sh_ uiautomator dump /sdcard/ui.xml >/dev/null; sh_ cat /sdcard/ui.xml > "$OUT/s
 grep -q 'text="Allow phone calls"' "$OUT/setup-ui.xml" && fail "Setup has no separate calls/texts switches" || pass "Setup has no separate calls/texts switches"
 # The list is alphabetical, so scroll down until Phone or Messages shows up.
 found=0
-for i in 1 2 3 4 5 6; do
+for i in 1 2 3 4 5 6 7 8 9 10; do
   grep -qE 'text="(Phone|Messages)"' "$OUT/setup-ui.xml" && { found=1; break; }
-  sh_ input swipe 540 1800 540 700 300 >/dev/null; sleep 1
+  # A slow emulator sometimes shows "System UI isn't responding" on top: tap Wait first.
+  if grep -q "isn't responding" "$OUT/setup-ui.xml"; then
+    b=$(tr '>' '\n' < "$OUT/setup-ui.xml" | grep -m1 'text="Wait"' | grep -o 'bounds="[^"]*"' | grep -oE '[0-9]+' | tr '\n' ' ')
+    read -r x1 y1 x2 y2 <<< "$b"
+    [ -n "$y2" ] && sh_ input tap $(( (x1+x2)/2 )) $(( (y1+y2)/2 )) >/dev/null; sleep 2
+  else
+    sh_ input swipe 540 1800 540 700 300 >/dev/null; sleep 1
+  fi
   sh_ uiautomator dump /sdcard/ui.xml >/dev/null; sh_ cat /sdcard/ui.xml > "$OUT/setup-ui.xml"
 done
 [ $found = 1 ] && pass "Phone/Messages are normal entries in the setup list" || fail "Phone/Messages are normal entries in the setup list" "not found in the list"
@@ -280,6 +287,8 @@ if [ -f "$NEW_APK" ]; then
   ok=0
   for i in $(seq 1 10); do sleep 1; [ "$(hidden_state $NEW_PKG)" = "hidden=true" ] && { ok=1; break; }; done
   [ $ok = 1 ] && pass "Newly installed app is hidden within ${i}s (app with no icon)" || fail "Newly installed app is hidden" "$(hidden_state $NEW_PKG) / $(tail -1 "$OUT/new-app-install.txt")"
+  # The log entry is written just after the app is hidden; give it a few seconds.
+  for i in 1 2 3 4 5; do tamperlog | grep -q "new_app_hidden.*$NEW_PKG" && break; sleep 1; done
   tamperlog | grep -q "new_app_hidden.*$NEW_PKG" && pass "Tamper log: new app hidden recorded" || fail "Tamper log: new app hidden recorded" "$(tamperlog)"
 else
   fail "Newly installed app is hidden" "test APK not built: $NEW_APK"

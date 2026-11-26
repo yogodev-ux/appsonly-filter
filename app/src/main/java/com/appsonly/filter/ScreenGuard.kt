@@ -77,7 +77,8 @@ class ScreenGuard : AccessibilityService() {
             // phone service: call / SIM / radio settings (the emergency dialer stays allowed)
             Regex("""com\.android\.phone\..*(Setting|Options|IccPin|RadioInfo|BandMode|Fdn)"""),
             // Play services: Google Account, Google settings, Find My Device, parental controls
-            Regex("""com\.google\.android\.gms\.(accountsettings|app\.settings|mdm\.settings|kids|settings)\."""),
+            // (any Play services screen with "settings" in its name, e.g. googlesettings.ui.GoogleSettingsActivity)
+            Regex("""com\.google\.android\.gms\..*([Ss]ettings|\.kids\.|\.mdm\.)"""),
         )
 
         /**
