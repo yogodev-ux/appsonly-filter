@@ -141,7 +141,9 @@ class ScreenGuard : AccessibilityService() {
         /** Settings' "Add an account" list: the customer is about to add an account. */
         private val ADD_ACCOUNT_CHOOSER = Regex("""ChooseAccountActivity|AddAccountSettings""")
         /** Google's sign-in screens. */
-        private val ADD_ACCOUNT = Regex("""com\.google\.android\.gms\.auth\.uiflows\.addaccount\.""")
+        // All of Google's add-account / sign-in pages (intro, MinuteMaid web sign-in, errors).
+        // An app's own "Sign in with Google" account picker lives elsewhere and isn't affected.
+        private val ADD_ACCOUNT = Regex("""com\.google\.android\.gms\.auth\.uiflows\.""")
 
         private class Allowed(val apps: Set<String>, val keyboards: Set<String>)
         @Volatile private var cache: Pair<Long, Allowed>? = null
