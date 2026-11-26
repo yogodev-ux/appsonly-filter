@@ -109,6 +109,7 @@ object License {
                 .putString("last_error", "")
                 .commit()
             Log.i(TAG, "license status=${payload.optString("status")}")
+            sendCustomer(ctx, token)
         } catch (e: Exception) {
             Log.w(TAG, "license check failed: ${e.message}")
             p.edit().putString("last_error", e.message ?: e.javaClass.simpleName).commit()
@@ -116,6 +117,21 @@ object License {
         val after = isPaid(ctx)
         if (before != after) TamperLog.record(ctx, if (after) "license_paid" else "license_unpaid")
         return before != after
+    }
+
+    /** Sends the customer's details and removal code from the installer, once; then forgets them. */
+    private fun sendCustomer(ctx: Context, token: String?) {
+        val pending = Customer.pending(ctx) ?: return
+        if (token == null) return
+        try {
+            val (code, text) = request("POST", "/v1/customer", JSONObject().put("customer", pending).toString(), token)
+            if (code == 200) {
+                Customer.sent(ctx)
+                Log.i(TAG, "customer details sent to the server")
+            } else Log.w(TAG, "server refused the customer details: $code $text")
+        } catch (e: Exception) {
+            Log.w(TAG, "customer details not sent yet: ${e.message}")
+        }
     }
 
     private fun request(method: String, path: String, body: String?, token: String?): Pair<Int, String> {

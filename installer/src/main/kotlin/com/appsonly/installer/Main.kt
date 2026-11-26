@@ -23,6 +23,7 @@ fun findApk(dirs: List<File>): File? =
  * Apps Only setup.
  *   Window (default):  AppsOnlySetup.exe
  *   Command line:      java -jar apps-only-setup.jar --cli [--yes] [--apk FILE] [--adb FILE] [--log-dir DIR]
+ *                      --name NAME --phone NUMBER --email ADDRESS --removal-code CODE (needed for a new setup)
  *                      --check only checks the phone.
  */
 fun main(args: Array<String>) {
@@ -57,7 +58,11 @@ fun main(args: Array<String>) {
         print("This sets up Apps Only on the connected phone. After the customer picks their apps, they can't be changed. Continue? [y/N] ")
         if (readlnOrNull()?.trim()?.lowercase() != "y") exitProcess(2)
     }
-    val ok = engine.install(apk)
+    val name = opt("--name"); val phone = opt("--phone"); val email = opt("--email"); val code = opt("--removal-code")
+    val customer = if (name != null || phone != null || email != null || code != null)
+        CustomerInfo(name ?: "", phone ?: "", email ?: "", code ?: "") else null
+    customer?.problems()?.let { p -> if (p.isNotEmpty()) { p.forEach { println("XX $it") }; exitProcess(2) } }
+    val ok = engine.install(apk, customer)
     println(if (ok) "SETUP OK" else "SETUP FAILED")
     exitProcess(if (ok) 0 else 1)
 }

@@ -32,7 +32,8 @@ data class PhoneCheck(
  *  3. install the Apps Only app
  *  4. switch off the apps that own accounts for a moment (the "account trick"), so Android
  *     allows Device Owner without a factory reset, then switch them straight back on
- *  5. make the app Device Owner and open it; the customer picks their apps on the phone
+ *  5. make the app Device Owner, hand it the customer's details and removal code, and open it;
+ *     the customer picks their apps on the phone
  *  6. save the log on this PC and upload it (once the server exists)
  */
 class SetupEngine(
@@ -133,9 +134,9 @@ class SetupEngine(
     }
 
     /** Runs the whole setup. Returns true when the phone is ready for the customer. */
-    fun install(apk: File): Boolean {
+    fun install(apk: File, customer: CustomerInfo? = null): Boolean {
         log.add("Apps Only setup, APK ${apk.name} (${apk.length()} bytes)")
-        val result = try { doInstall(apk) } catch (e: Exception) {
+        val result = try { doInstall(apk, customer) } catch (e: Exception) {
             error("Unexpected problem: ${e.javaClass.simpleName}: ${e.message}")
             false
         }
@@ -145,10 +146,15 @@ class SetupEngine(
         return result
     }
 
-    private fun doInstall(apk: File): Boolean {
+    private fun doInstall(apk: File, customer: CustomerInfo?): Boolean {
         if (!apk.isFile) { error("The Apps Only app file is missing: ${apk.absolutePath}"); return false }
+        customer?.problems()?.firstOrNull()?.let { error(it); return false }
         val phone = check()
         if (!phone.canInstall) return false
+        if (!phone.alreadyInstalled && customer == null) {
+            error("Enter the customer's name, phone, email and removal code first.")
+            return false
+        }
 
         step("Installing the Apps Only app")
         val inst = adb.run("install", "-r", "-t", apk.absolutePath, timeoutSec = 300)
@@ -160,6 +166,7 @@ class SetupEngine(
 
         if (phone.alreadyInstalled) {
             allowScreenGuard()
+            if (customer != null && !sendCustomer(customer)) return false
             openApp()
             info("Done. The app was updated; the phone stays locked as before.")
             return true
@@ -194,6 +201,7 @@ class SetupEngine(
         info("Apps Only is now the phone's manager.")
         allowScreenGuard()
 
+        if (!sendCustomer(customer!!)) return false
         openApp()
         info("Done. On the phone, pick the apps to allow, then tap Lock.")
         return true
@@ -238,6 +246,22 @@ class SetupEngine(
         val r = adb.shell("pm grant ${config.pkg} android.permission.WRITE_SECURE_SETTINGS")
         if (r.ok && r.out.isBlank()) info("Screen guard allowed.")
         else warn("Could not allow the screen guard (${r.out.lines().firstOrNull().orEmpty()}). The lock still works without it.")
+    }
+
+    /**
+     * Hands the customer's details and removal code to the app (base64 JSON, so no shell
+     * quoting). The app sends them to the server when it first goes online. Never logged.
+     */
+    private fun sendCustomer(customer: CustomerInfo): Boolean {
+        step("Saving the customer's details on the phone")
+        val r = adb.shell("am broadcast -n ${config.pkg}/.SetupInfoReceiver --es data ${customer.toBase64()}")
+        if (!r.out.contains("data=\"saved\"")) {
+            val why = Regex("data=\"([^\"]*)\"").find(r.out)?.groupValues?.get(1) ?: "no answer"
+            error("The phone didn't accept the customer's details ($why). Run setup again.")
+            return false
+        }
+        info("Customer details and removal code saved. The phone sends them to Apps Only when it goes online.")
+        return true
     }
 
     private fun openApp() {

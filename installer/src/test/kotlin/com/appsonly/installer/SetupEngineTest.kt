@@ -66,6 +66,9 @@ open class FakeAdb(
                     owner = "com.appsonly.filter"; CmdResult(0, "Success: Device owner set to package com.appsonly.filter\nActive admin set to component {com.appsonly.filter/com.appsonly.filter.AdminReceiver}")
                 } else CmdResult(255, "java.lang.IllegalStateException: Not allowed to set the device owner because there are already some accounts on the device")
             sh.startsWith("am start") -> CmdResult(0, "Starting: Intent")
+            sh.startsWith("am broadcast") && ".SetupInfoReceiver" in sh ->
+                if (owner == "com.appsonly.filter") CmdResult(0, "Broadcasting: Intent\nBroadcast completed: result=0, data=\"saved\"")
+                else CmdResult(0, "Broadcast completed: result=0, data=\"not device owner\"")
             else -> CmdResult(0, "")
         }
     }
@@ -74,6 +77,7 @@ open class FakeAdb(
 class SetupEngineTest {
     private val tmp: File = Files.createTempDirectory("aos").toFile()
     private val apk = File(tmp, "apps-only.apk").apply { writeText("x") }
+    private val customer = CustomerInfo("Dana Levi", "+1 (212) 555-0100", "Dana@Example.com", "secret-42")
     private fun engine(adb: FakeAdb) = SetupEngine(adb, log = SetupLog(File(tmp, "logs")), stateDir = tmp, sleeper = {})
 
     @Test fun parsesAccountsWithoutNames() {
@@ -89,7 +93,7 @@ class SetupEngineTest {
 
     @Test fun accountTrickSwitchesAppsOffAndBackOn() {
         val adb = FakeAdb()
-        assertTrue(engine(adb).install(apk))
+        assertTrue(engine(adb).install(apk, customer))
         assertEquals("com.appsonly.filter", adb.owner)
         assertTrue(adb.disabled.isEmpty(), "account apps must be switched back on")
         assertFalse(File(tmp, "pending-ABC123.txt").exists())
@@ -106,7 +110,7 @@ class SetupEngineTest {
                 if (args.joinToString(" ").contains("dpm set-device-owner")) CmdResult(255, "already several users")
                 else super.run(*args, timeoutSec = timeoutSec)
         }
-        assertFalse(engine(adb).install(apk))
+        assertFalse(engine(adb).install(apk, customer))
         assertTrue(adb.disabled.isEmpty())
     }
 
@@ -127,6 +131,54 @@ class SetupEngineTest {
         val adb = FakeAdb(owner = "com.appsonly.filter")
         assertTrue(engine(adb).install(apk))
         assertTrue(adb.calls.none { it.contains("disable-user") || it.contains("set-device-owner") })
+    }
+
+    @Test fun newSetupNeedsCustomerDetails() {
+        val adb = FakeAdb()
+        assertFalse(engine(adb).install(apk))
+        assertTrue(adb.calls.none { it.contains("set-device-owner") }, "nothing changes on the phone without the details")
+    }
+
+    @Test fun customerDetailsReachThePhoneButNeverTheLog() {
+        val adb = FakeAdb()
+        assertTrue(engine(adb).install(apk, customer))
+        val sent = adb.calls.single { it.contains("SetupInfoReceiver") }
+        val b64 = sent.substringAfter("--es data ").trim()
+        assertTrue(Regex("^[A-Za-z0-9+/=]+$").matches(b64), "only base64 characters on the adb command line")
+        val json = org.json.JSONObject(String(java.util.Base64.getDecoder().decode(b64)))
+        assertEquals("Dana Levi", json.getString("name"))
+        assertEquals("dana@example.com", json.getString("email"))
+        assertEquals("secret-42", json.getString("removalCode"))
+        assertTrue(adb.calls.indexOf(sent) < adb.calls.indexOfLast { it.contains("am start") }, "details are saved before the app opens")
+        val log = File(tmp, "logs").listFiles()!!.single().readText()
+        for (secret in listOf("secret-42", "Dana", "555-0100", "example.com", b64)) assertFalse(log.contains(secret), "log must not contain $secret")
+    }
+
+    @Test fun phoneRefusingDetailsFailsSetup() {
+        val adb = object : FakeAdb() {
+            override fun run(vararg args: String, timeoutSec: Long): CmdResult =
+                if (args.joinToString(" ").contains("SetupInfoReceiver")) CmdResult(0, "Broadcast completed: result=0")
+                else super.run(*args, timeoutSec = timeoutSec)
+        }
+        assertFalse(engine(adb).install(apk, customer))
+    }
+
+    @Test fun customerDetailChecks() {
+        assertTrue(customer.problems().isEmpty())
+        assertEquals(1, customer.copy(name = "D").problems().size)
+        assertEquals(1, customer.copy(phone = "call me").problems().size)
+        assertEquals(1, customer.copy(email = "dana@").problems().size)
+        assertEquals(1, customer.copy(removalCode = "12345").problems("12345").size)
+        assertEquals(1, customer.copy(removalCode = "has space").problems("has space").size)
+        assertEquals(1, customer.problems(confirmCode = "different").size)
+        val bad = CustomerInfo("x", "1", "y", "z")
+        assertFalse(engine(FakeAdb()).install(apk, bad))
+    }
+
+    @Test fun updateCanResendDetails() {
+        val adb = FakeAdb(owner = "com.appsonly.filter")
+        assertTrue(engine(adb).install(apk, customer))
+        assertTrue(adb.calls.any { it.contains("SetupInfoReceiver") })
     }
 
     @Test fun modelList() {

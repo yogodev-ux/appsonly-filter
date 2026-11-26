@@ -3,6 +3,9 @@
 // Phone (app):
 //   POST /v1/activate        {installId, model, sdk, appVersion} -> {deviceId, token, payCode, payUrl, license}
 //   GET  /v1/license         Bearer <token>                       -> {status, license, payCode, payUrl}
+//   POST /v1/customer        Bearer <token> {customer: {name, phone, email, removalCode}}
+//                            the details the customer typed in the Windows installer; the removal
+//                            code is stored only as a hash
 // Customer (any browser, e.g. on a PC, since the phone can't browse):
 //   GET  /pay/<code>         page with the price and a Pay button
 //   GET  /pay/<code>/go      starts the payment (Stripe Checkout, or the test page)
@@ -14,6 +17,7 @@
 //   GET  /v1/admin/devices
 //   POST /v1/admin/devices/<id>/status {status: "paid" | "unpaid" | "removed"}
 //   GET  /v1/admin/installer-logs
+import { hashSecret } from './secrets.js';
 import { escapeHtml, html, json, payCode, randomToken, sha256Hex, timingSafeEqual } from './util.js';
 
 const STATUSES = new Set(['unpaid', 'paid', 'removed']);
@@ -80,6 +84,35 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
     return json({ status: device.status, payCode: device.payCode, payUrl: payUrl(device), license: await licenseFor(device) });
   }
 
+  function cleanCustomer(c) {
+    if (!c || typeof c !== 'object') return null;
+    const name = String(c.name ?? '').trim();
+    const phone = String(c.phone ?? '').trim();
+    const email = String(c.email ?? '').trim().toLowerCase();
+    const code = String(c.removalCode ?? '');
+    const digits = phone.replace(/\D/g, '').length;
+    if (name.length < 2 || name.length > 100) return null;
+    if (digits < 7 || digits > 15 || phone.length > 25) return null;
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email) || email.length > 200) return null;
+    if (code.length < 6 || code.length > 64 || /\s/.test(code)) return null;
+    return { name, phone, email, code };
+  }
+
+  async function customer(request) {
+    const device = await deviceFromAuth(request);
+    if (!device) return json({ error: 'unknown device' }, 401);
+    const body = await request.json().catch(() => null);
+    const c = cleanCustomer(body?.customer);
+    if (!c) return json({ error: 'bad customer details' }, 400);
+    // Set once, at install. Later changes go through the email reset (portal step).
+    if (device.removalCodeHash) return json({ ok: true, already: true });
+    device.customer = { name: c.name, phone: c.phone, email: c.email, savedAt: now() };
+    device.removalCodeHash = await hashSecret(c.code);
+    device.lastSeen = now();
+    await store.putDevice(device);
+    return json({ ok: true });
+  }
+
   async function payPage(code, url) {
     const device = await store.findDevice('payCode', code);
     if (!device) return html('<h1>Code not found</h1><p>Check the code shown on the phone and try again.</p>', 404);
@@ -134,6 +167,7 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
       if (p === '/health') return json({ ok: true });
       if (p === '/v1/activate' && method === 'POST') return activate(request);
       if (p === '/v1/license' && method === 'GET') return license(request);
+      if (p === '/v1/customer' && method === 'POST') return customer(request);
       if (p === '/v1/stripe/webhook' && method === 'POST') return webhook(request);
       if (p === '/v1/installer-logs' && method === 'POST') return installerLog(request);
 
@@ -147,7 +181,7 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
       if (p.startsWith('/v1/admin/')) {
         if (!isAdmin(request)) return json({ error: 'not allowed' }, 401);
         if (p === '/v1/admin/devices' && method === 'GET') {
-          const devices = (await store.listDevices()).map(({ tokenHash, installId, ...d }) => d);
+          const devices = (await store.listDevices()).map(({ tokenHash, installId, removalCodeHash, ...d }) => ({ ...d, hasRemovalCode: Boolean(removalCodeHash) }));
           return json({ devices });
         }
         if (p === '/v1/admin/installer-logs' && method === 'GET') return json({ logs: await store.listLogs() });

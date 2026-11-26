@@ -6,6 +6,9 @@ import java.awt.Desktop
 import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import java.awt.Insets
 import java.io.File
 import javax.swing.BorderFactory
 import javax.swing.BoxLayout
@@ -14,14 +17,16 @@ import javax.swing.JFrame
 import javax.swing.JLabel
 import javax.swing.JOptionPane
 import javax.swing.JPanel
+import javax.swing.JPasswordField
 import javax.swing.JProgressBar
 import javax.swing.JScrollPane
 import javax.swing.JTextArea
+import javax.swing.JTextField
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
 import javax.swing.WindowConstants
 
-/** The setup window: Check phone -> Install -> done. */
+/** The setup window: customer details, Check phone -> Install -> done. */
 object Gui {
     fun show(adbPath: String?, apk: File?, logDir: File) = SwingUtilities.invokeLater {
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()) } catch (_: Exception) {}
@@ -37,6 +42,11 @@ object Gui {
         val installBtn = JButton("Install").apply { isEnabled = false }
         val logBtn = JButton("Open log folder")
         var lastCheck: PhoneCheck? = null
+        val nameField = JTextField(24)
+        val phoneField = JTextField(24)
+        val emailField = JTextField(24)
+        val codeField = JPasswordField(24)
+        val code2Field = JPasswordField(24)
 
         init {
             defaultCloseOperation = WindowConstants.EXIT_ON_CLOSE
@@ -45,6 +55,8 @@ object Gui {
                 border = BorderFactory.createEmptyBorder(16, 16, 8, 16)
                 add(JLabel("Apps Only").apply { font = font.deriveFont(Font.BOLD, 22f) })
                 add(JLabel("Turns this phone into an apps-only phone. The customer picks the allowed apps on the phone at the end."))
+                add(JLabel(" "))
+                add(details())
                 add(JLabel(" "))
                 add(status.apply { font = font.deriveFont(Font.BOLD) })
                 add(phoneLabel)
@@ -58,7 +70,7 @@ object Gui {
                 border = BorderFactory.createCompoundBorder(BorderFactory.createEmptyBorder(0, 16, 0, 16), border)
             }, BorderLayout.CENTER)
             contentPane.add(buttons, BorderLayout.SOUTH)
-            minimumSize = Dimension(720, 480)
+            minimumSize = Dimension(760, 640)
             pack()
             setLocationRelativeTo(null)
 
@@ -70,6 +82,31 @@ object Gui {
             }
             if (adbPath == null) fatal("The installer is incomplete: the platform-tools folder is missing.")
             else if (apk == null) fatal("The installer is incomplete: apps-only.apk is missing.")
+        }
+
+        /** The customer's details and the removal code they choose (needed for a new setup). */
+        fun details(): JPanel = JPanel(GridBagLayout()).apply {
+            alignmentX = LEFT_ALIGNMENT
+            border = BorderFactory.createTitledBorder("Customer details")
+            val rows = listOf(
+                "Full name" to nameField,
+                "Phone number" to phoneField,
+                "Email" to emailField,
+                "Removal code (customer picks it)" to codeField,
+                "Removal code again" to code2Field,
+            )
+            rows.forEachIndexed { i, (label, field) ->
+                add(JLabel(label), GridBagConstraints().apply { gridx = 0; gridy = i; anchor = GridBagConstraints.WEST; insets = Insets(3, 6, 3, 10) })
+                add(field, GridBagConstraints().apply { gridx = 1; gridy = i; fill = GridBagConstraints.HORIZONTAL; weightx = 1.0; insets = Insets(3, 0, 3, 6) })
+            }
+            add(JLabel("<html>Support can remove the filter only with this code. If it's forgotten, a reset link goes to the email above.</html>"),
+                GridBagConstraints().apply { gridx = 0; gridy = rows.size; gridwidth = 2; anchor = GridBagConstraints.WEST; insets = Insets(6, 6, 3, 6) })
+        }
+
+        fun customer(): CustomerInfo? {
+            val all = listOf(nameField.text, phoneField.text, emailField.text, String(codeField.password))
+            if (all.all { it.isBlank() } && lastCheck?.alreadyInstalled == true) return null
+            return CustomerInfo(nameField.text, phoneField.text, emailField.text, String(codeField.password))
         }
 
         fun fatal(msg: String) {
@@ -117,6 +154,12 @@ object Gui {
 
         fun runInstall() {
             val c = lastCheck ?: return
+            val customer = customer()
+            val problems = customer?.problems(String(code2Field.password)) ?: emptyList()
+            if (problems.isNotEmpty()) {
+                JOptionPane.showMessageDialog(this, problems.joinToString("\n"), "Customer details", JOptionPane.WARNING_MESSAGE)
+                return
+            }
             if (!c.alreadyInstalled) {
                 val answer = JOptionPane.showConfirmDialog(
                     this,
@@ -127,12 +170,13 @@ object Gui {
             }
             busy(true)
             Thread {
-                val ok = engine().install(apk!!)
+                val ok = engine().install(apk!!, customer)
                 SwingUtilities.invokeLater {
                     status.foreground = if (ok) Color(0x1B5E20) else Color(0xB00020)
                     status.text = if (ok) "Done. Finish on the phone: pick the apps, then tap Lock."
                         else "Setup did not finish. See the messages below."
                     lastCheck = null
+                    if (ok) { codeField.text = ""; code2Field.text = "" }
                     busy(false)
                     installBtn.isEnabled = false
                 }
