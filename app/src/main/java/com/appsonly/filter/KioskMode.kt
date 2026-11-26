@@ -42,6 +42,7 @@ object KioskMode {
 
     fun configure(ctx: Context, dpm: DevicePolicyManager, admin: ComponentName, visible: Set<String>) {
         hideSideDoors(ctx, dpm, admin, visible)
+        ScreenGuard.ensureOn(ctx)
         val pkgs = (visible + SYSTEM_HELPERS + AppScanner.keyboards(ctx) + ctx.packageName).toTypedArray()
         try {
             dpm.setLockTaskPackages(admin, pkgs)

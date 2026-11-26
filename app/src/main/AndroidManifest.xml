@@ -24,6 +24,9 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" tools:targetApi="s" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Granted by the Windows installer (adb), so the screen guard can be kept switched on. -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
     <!-- "Back to home" notification while Google sign-in is open. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
@@ -106,6 +109,20 @@
                 <action android:name="android.net.VpnService" />
             </intent-filter>
             <meta-data android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON" android:value="true" />
+        </service>
+
+        <!-- Screen guard: closes any screen of an app that isn't allowed. -->
+        <service
+            android:name=".ScreenGuard"
+            android:exported="false"
+            android:label="Apps Only screen guard"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/screen_guard" />
         </service>
 
         <receiver

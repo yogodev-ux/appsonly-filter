@@ -63,6 +63,8 @@ echo "== install, Device Owner, lock"
 adb install -r -t "$APK" | tail -1
 adb install -r -t "$PROBE_APK" | tail -1
 sh_ dpm set-device-owner --user 0 $PKG/.AdminReceiver | tail -1
+# What the Windows installer does: allow the screen guard.
+sh_ pm grant $PKG android.permission.WRITE_SECURE_SETTINGS
 ALLOWED=""
 for p in com.google.android.deskclock com.google.android.calculator com.android.deskclock; do
   sh_ pm list packages | grep -qx "package:$p" && { ALLOWED=$p; break; }
@@ -74,6 +76,12 @@ sleep 5
 home; sleep 3
 [ "$(kiosk)" = "LOCKED" ] && pass "Kiosk mode on after locking" || fail "Kiosk mode on after locking" "$(kiosk)"
 shot 00-home
+guard_on() { sh_ settings get secure enabled_accessibility_services | grep -q "$PKG/"; }
+guard_on && pass "Screen guard is on" || fail "Screen guard is on" "$(sh_ settings get secure enabled_accessibility_services)"
+# Tamper: switch it off from the computer; the app must switch it back on by itself.
+sh_ settings put secure enabled_accessibility_services "" >/dev/null
+home; sh_ am start -n $PKG/.MainActivity >/dev/null; sleep 6
+guard_on && pass "Screen guard comes back on after being switched off" || fail "Screen guard comes back on after being switched off"
 
 # Packages that may be in front: ours, the allowed ones and what comes with them (here the
 # phone app and contacts, because calls are allowed), which is every app that still has an
@@ -103,8 +111,7 @@ check_front() {
   if echo "$f" | grep -qiE "NotificationShade|StatusBar.*expanded|GlobalActions|ActionsDialog"; then
     fail "$name" "system window open: $f"
   elif [ -n "$p" ] && ! is_ok_top "$top"; then
-    if [ "${SAME_TASK:-0}" = 1 ]; then known "$name" "opened $top"; sh_ am force-stop "$p" >/dev/null
-    else fail "$name" "opened $top"; fi
+    fail "$name" "opened $top"; [ "${SAME_TASK:-0}" = 1 ] && sh_ am force-stop "$p" >/dev/null
   else
     pass "$name"
   fi
@@ -238,20 +245,23 @@ while read -r cmp; do
   p=${cmp%%/*}
   is_ok_pkg "$p" && continue
   case "$p" in android|com.android.systemui) continue;; esac
-  SWEPT=$((SWEPT+1)); [ $SWEPT -gt 120 ] && break
+  SWEPT=$((SWEPT+1)); [ $SWEPT -gt 150 ] && break
   home
   sh_ am start -S -W -n $PROBE/.Probe --es cmp "$cmp" >/dev/null
   sleep 1.5
   top=$(resumed); tp=${top%%/*}
   if [ -n "$tp" ] && ! is_ok_top "$top"; then
     # Android lets an allowed app open other apps' screens inside its own window (kiosk
-    # mode only checks which app a window belongs to). Reported, not failed, until the
-    # foreground guard exists; packages we can hide are hidden and no longer show up here.
-    shot "sweep-$cmp"; known "From allowed app (sweep): $cmp" "opened $top"
+    # mode only checks which app a window belongs to); the screen guard must close them.
+    shot "sweep-$cmp"; fail "From allowed app (sweep): $cmp" "opened $top"
     sh_ am force-stop "$tp" >/dev/null
   fi
 done < "$OUT/all-main-activities.txt"
 info "Sweep tried $SWEPT screens of non-allowed packages"
+TL=$(sh_ am broadcast -n $PKG/.dev.DevTamperLogReceiver)
+echo "$TL" | grep -q screen_blocked && pass "Tamper log records screens the guard closed" || fail "Tamper log records screens the guard closed" "$(echo "$TL" | tail -c 300)"
+grep "Screen guard closed" "$OUT/logcat.txt" | sed 's/.*Screen guard closed //' | sort | uniq -c | sort -rn > "$OUT/guard-closed.txt"
+info "Screen guard closed $(wc -l < "$OUT/guard-closed.txt") different screens (see guard-closed.txt)"
 home
 
 # ------------------------------------------------------------------ 1. boot window
