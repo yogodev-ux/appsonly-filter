@@ -98,15 +98,19 @@ echo "packages allowed in front: $OK_PKGS" | tee "$OUT/ok-packages.txt"
 is_ok_pkg() { case "$OK_PKGS" in *" $1 "*) return 0;; esac; return 1; }
 # Screens that are fine on purpose: Android's "pick an app" list (whatever is picked must
 # still be allowed) and the emergency dialer (emergency calls must always work).
+# The phone's real Settings app is allowed, except its risky screens (same list as the
+# screen guard's SETTINGS_DENY_CLASS); those must be closed.
+SETTINGS_DENY='(Accessibility|ApplicationDetails|InstalledAppDetails|AppInfo|ManageApplications|AllApplications|DefaultApp|HomeSettings|DeviceAdmin|DevelopmentSettings|Development|FactoryReset|MainClear|ResetDashboard|UserSettings|Users|VpnSettings|Vpn|PrivateDns|DateTime|SpecialAccess|ManageExternalSources|ManageAppExternalSources|Overlay|UsageAccess|NotificationAccess|WriteSettings|ZenAccess|PictureInPicture|ChangeWifiState|ManageExternalStorage|TrustAgent|Premium|DataSaver|Captioning|TextToSpeech|Tts|ToggleScreen|TalkBack|SelectToSpeak|AppLocale|Autofill|ManageAssist|Gestures|AssistGesture)'
 is_ok_top() {
   case "$1" in
+    com.android.settings/*) echo "${1##*.}" | grep -qE "$SETTINGS_DENY" && return 1; return 0;;
     android/com.android.internal.app.ResolverActivity|android/com.android.internal.app.ChooserActivity|com.android.intentresolver/*) return 0;;
     com.android.phone/.EmergencyDialer|com.android.phone/com.android.phone.EmergencyDialer) return 0;;
     # An allowed app asking for a permission (e.g. Contacts on first start).
     *permissioncontroller/*GrantPermissionsActivity) return 0;;
     # Play services' invisible add-account starter: it shows nothing (the screen stays on the
-    # allowed app), adding accounts is blocked by the no_modify_accounts restriction, and the
-    # visible add-account pages after it are closed by the guard.
+    # allowed app), and every visible Google sign-in page after it is closed by the guard unless
+    # the customer started adding an account from Settings > Accounts.
     com.google.android.gms/.auth.uiflows.addaccount.AccountIntroActivity) return 0;;
   esac
   is_ok_pkg "${1%%/*}"
@@ -125,7 +129,9 @@ check_front() {
     # The guard may need a moment more on a slow screen (Play services loads slowly):
     # closed within ~4 s more still counts, and is reported.
     sleep 4; top2=$(resumed)
-    if [ "${SAME_TASK:-0}" = 1 ] && is_ok_top "$top2"; then
+    # Risky Settings screens open in their own window (Settings is an allowed app) and
+    # are closed by the guard too, so they get the same grace.
+    if { [ "${SAME_TASK:-0}" = 1 ] || [ "$p" = com.android.settings ]; } && is_ok_top "$top2"; then
       pass "$name"; info "$name: closed by the guard after ~6 s ($top)"
     else
       fail "$name" "opened $top"; [ "${SAME_TASK:-0}" = 1 ] && sh_ am force-stop "$p" >/dev/null

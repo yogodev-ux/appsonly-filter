@@ -37,6 +37,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         AccountFlow.end(this)
+        KioskMode.endGoogleSignIn(this)
         render()
     }
 
@@ -237,10 +238,9 @@ class MainActivity : Activity() {
     // ---------- state 3: locked home screen ----------
 
     private fun showHome(cfg: LockConfig) {
-        val realSettings = AppScanner.settingsPackage(this)
-        val entries = listOf(AppEntry(SETTINGS_TILE, "Settings")) +
-            LockPolicy.visiblePackages(this, cfg)
-                .filter { it != realSettings && packageManager.getLaunchIntentForPackage(it) != null }
+        // The phone's real Settings app is a normal icon (accounts are added there too).
+        val entries = LockPolicy.visiblePackages(this, cfg)
+                .filter { packageManager.getLaunchIntentForPackage(it) != null }
                 .map { AppEntry.of(this, it) }
                 .sortedBy { it.label.lowercase() }
 
@@ -263,7 +263,8 @@ class MainActivity : Activity() {
                     }
                 }
                 if (entries[pos].packageName == SETTINGS_TILE) {
-                    startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+                    startActivity(Intent(this@MainActivity, SettingsActivity::class.java)
+                        .putExtra(SettingsActivity.EXTRA_ACCOUNT_ONLY, true))
                     return@setOnItemClickListener
                 }
                 val launch = packageManager.getLaunchIntentForPackage(entries[pos].packageName)
