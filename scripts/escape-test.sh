@@ -267,19 +267,19 @@ echo "== web filter: proxies and direct addresses, from inside an allowed app"
 # The filter checks names. These try to reach the internet without a name lookup the filter
 # allows: through a proxy set in the phone's settings (like a Wi-Fi proxy), and straight to
 # an address. Each must fail; a normal allowed site must still work.
-net_probe() { # what kind(url|tcp) -> prints "ok ..." or "error ..."
-  local what=$1 kind=$2 r="" start
+net_probe() { # what kind(url|tcp) [extra am args] -> prints "ok ..." or "error ..."
+  local what=$1 kind=$2 r="" start; shift 2
   home
   start=$(wc -l < "$OUT/logcat.txt")
-  sh_ am start -S -W -n $PROBE/.Probe --es "$kind" "$what" >/dev/null
+  sh_ am start -S -W -n $PROBE/.Probe --es "$kind" "$what" "$@" >/dev/null
   for i in $(seq 1 30); do
     r=$(tail -n +$((start+1)) "$OUT/logcat.txt" | grep -F "NET " | grep -F " $what " | tail -1 | sed 's/.*NET //')
     [ -n "$r" ] && break; sleep 1
   done
   echo "${r:-error no answer}"
 }
-net_ok()      { local r; r=$(net_probe "$2" "$3"); case "$r" in ok*) pass "$1 ($r)";; *) fail "$1" "$r";; esac; }
-net_refused() { local r; r=$(net_probe "$2" "$3"); case "$r" in error*) pass "$1 (${r:0:80})";; *) fail "$1" "it worked: $r";; esac; }
+net_ok()      { local n=$1; shift; local r; r=$(net_probe "$@"); case "$r" in ok*) pass "$n ($r)";; *) fail "$n" "$r";; esac; }
+net_refused() { local n=$1; shift; local r; r=$(net_probe "$@"); case "$r" in error*) pass "$n (${r:0:80})";; *) fail "$n" "it worked: $r";; esac; }
 
 net_ok "Allowed app still reaches a site on its list" "https://www.googleapis.com/" url
 net_refused "Site not on the list is blocked" "https://www.wikipedia.org/" url
@@ -296,9 +296,13 @@ if curl -s -o /dev/null -w "%{http_code}" -x http://127.0.0.1:8899 https://www.w
 else
   fail "Test proxy works from the computer" "control check failed, proxy checks below prove nothing"
 fi
+# An app on a Wi-Fi with a proxy sends its traffic to the proxy's address instead of the site's.
+net_refused "Wi-Fi style proxy can't reach a blocked site" "https://www.wikipedia.org/" url --es proxy 10.0.2.2:8899
+net_refused "Wi-Fi style proxy can't reach a plain web page" "http://neverssl.com/" url --es proxy 10.0.2.2:8899
+net_refused "Wi-Fi style proxy can't even reach an allowed site" "https://www.googleapis.com/" url --es proxy 10.0.2.2:8899
+# The same proxy set in the phone's own settings.
 sh_ settings put global http_proxy 10.0.2.2:8899 >/dev/null; sleep 3
 net_refused "Proxy set in the phone's settings can't reach a blocked site" "https://www.wikipedia.org/" url
-net_refused "Proxy can't reach a plain web page" "http://neverssl.com/" url
 PHONE_HITS=$(grep -vc "^127\.0\.0\.1 " "$PROXY_LOG")
 [ "$PHONE_HITS" = "0" ] && pass "No connection from the phone reached the proxy" || fail "No connection from the phone reached the proxy" "$(grep -v '^127' "$PROXY_LOG" | head -3)"
 sh_ settings put global http_proxy :0 >/dev/null; sh_ settings delete global http_proxy >/dev/null

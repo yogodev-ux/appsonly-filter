@@ -17,6 +17,7 @@ import android.widget.TextView
  *
  * Network checks (no screen opens):
  *   --es url https://host/     fetch it the way an app would (uses the phone's proxy setting)
+ *   --es proxy 10.0.2.2:8899   with url: go through that proxy, like an app on a Wi-Fi with a proxy
  *   --es tcp 1.2.3.4:443       open a plain connection to that address
  * Log "NET ok <what> <detail>" or "NET error <what> <reason>".
  */
@@ -25,7 +26,7 @@ class Probe : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(TextView(this).apply { text = "Escape probe"; textSize = 24f })
         val x = intent
-        x.getStringExtra("url")?.let { u -> net(u) { fetch(u) }; return }
+        x.getStringExtra("url")?.let { u -> net(u) { fetch(u, x.getStringExtra("proxy")) }; return }
         x.getStringExtra("tcp")?.let { a -> net(a) { connect(a) }; return }
         val what = x.getStringExtra("cmp") ?: x.getStringExtra("action") ?: return
         val i = Intent()
@@ -56,8 +57,12 @@ class Probe : Activity() {
         }.start()
     }
 
-    private fun fetch(u: String): String {
-        val c = java.net.URL(u).openConnection() as java.net.HttpURLConnection
+    private fun fetch(u: String, proxy: String?): String {
+        val url = java.net.URL(u)
+        val c = (if (proxy == null) url.openConnection() else {
+            val (h, p) = proxy.split(":")
+            url.openConnection(java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress(h, p.toInt())))
+        }) as java.net.HttpURLConnection
         c.connectTimeout = 10_000; c.readTimeout = 10_000
         try { return "HTTP ${c.responseCode}" } finally { c.disconnect() }
     }
