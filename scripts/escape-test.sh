@@ -284,6 +284,9 @@ expect_site $PROBE www.facebook.com BLOCKED "general website found in the app"
 expect_site $PROBE en.wikipedia.org BLOCKED "general website found in the app"
 expect_site $PROBE www.cnn.com BLOCKED "general website not in the app"
 expect_site $PROBE random-unrelated-site.com BLOCKED "not in the app"
+# Leftovers of code names and cut-off names must not count as websites.
+expect_site $PROBE ava.io BLOCKED "piece of the code name java.io"
+expect_site $PROBE elemetry.probevendor-metrics.io BLOCKED "cut-off name"
 # Real apps on the emulator: the scan must finish and give a result.
 for p in ${ALLOWED//,/ }; do
   [ "$p" = "$PROBE" ] && continue

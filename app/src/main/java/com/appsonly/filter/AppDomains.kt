@@ -118,10 +118,12 @@ object AppDomains {
         val sb = StringBuilder()
         fun flush() {
             if (sb.length >= 4) {
-                hostsIn(sb, out)
-                // In app code each text starts with its length, which can be a printable
-                // letter glued to the front ("Atelemetry.example.io"): try without it too.
-                hostsIn(sb.subSequence(1, sb.length), out)
+                // In app code each text starts with its length. For texts of 33 to 126
+                // letters that length byte is printable and gets glued to the front
+                // ("Etelemetry.example-metrics.io" for a 69-letter text). When the first
+                // character's code is exactly the length of the rest, leave it out.
+                if (sb[0].code == sb.length - 1) hostsIn(sb.subSequence(1, sb.length), out)
+                else hostsIn(sb, out)
             }
             sb.setLength(0)
         }
@@ -143,7 +145,9 @@ object AppDomains {
     private val URL = Regex("(?i)(?:https?|wss?)://([a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?)")
     private val BARE = Regex("(?<![A-Za-z0-9_.\$/@-])((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,12})(?![A-Za-z0-9_\$(-])")
     private val COMMON_TLDS = setOf(
-        "com", "net", "org", "io", "co", "me", "app", "dev", "info", "biz", "tv", "ai", "gg", "ly",
+        // Not "app"/"dev": too many code names end in .app (android.app). Those are still
+        // found when written as https:// addresses.
+        "com", "net", "org", "io", "co", "me", "info", "biz", "tv", "ai", "gg", "ly",
         "cc", "xyz", "online", "site", "cloud", "tech", "live", "link", "us", "uk", "de", "fr", "il",
         "ru", "in", "br", "jp", "au", "ca", "eu", "es", "it", "nl", "pl", "se", "ch", "at", "be",
     )
