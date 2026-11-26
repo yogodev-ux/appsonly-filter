@@ -71,10 +71,15 @@ for p in com.google.android.deskclock com.google.android.calculator com.android.
 done
 ALLOWED="${ALLOWED:+$ALLOWED,}$PROBE"
 echo "allowed: $ALLOWED"
-sh_ am broadcast -n $PKG/.dev.DevLockReceiver --es allowed "$ALLOWED" --ez phone true | tail -1
+sh_ am broadcast -n $PKG/.dev.DevLockReceiver --es allowed "$ALLOWED" --ez phone true --ez paid true | tail -1
 sleep 5
 home; sleep 3
 [ "$(kiosk)" = "LOCKED" ] && pass "Kiosk mode on after locking" || fail "Kiosk mode on after locking" "$(kiosk)"
+# The allowed test app must really be usable (not hidden by the payment gate), or every
+# "from inside an allowed app" check below would pass without testing anything.
+sh_ am start -W -n $PROBE/.Probe >/dev/null; sleep 2
+resumed | grep -q "$PROBE" && pass "Allowed test app opens" || fail "Allowed test app opens" "$(resumed) (hidden by the payment gate?)"
+home
 shot 00-home
 guard_on() { sh_ settings get secure enabled_accessibility_services | grep -q "$PKG/"; }
 guard_on && pass "Screen guard is on" || fail "Screen guard is on" "$(sh_ settings get secure enabled_accessibility_services)"
