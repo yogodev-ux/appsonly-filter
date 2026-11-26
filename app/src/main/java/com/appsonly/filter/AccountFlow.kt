@@ -125,6 +125,7 @@ object AccountFlow {
     }
 
     private fun backIntent(ctx: Context) = Intent(ctx, SettingsActivity::class.java)
+        .putExtra(SettingsActivity.EXTRA_ACCOUNT_ONLY, true)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
 
     /** Brings our Settings screen (and so our task) back in front of Google's page. */

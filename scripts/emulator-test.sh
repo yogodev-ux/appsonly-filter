@@ -98,7 +98,7 @@ echo "$LT" | grep -q LOCKED && pass "Kiosk (lock task) mode on" || fail "Kiosk (
 
 echo "== hidden apps"
 hidden_state() { sh_ dumpsys package "$1" | grep -m1 -o "hidden=[a-z]*"; }
-for p in com.android.chrome com.android.settings com.google.android.googlequicksearchbox; do
+for p in com.android.chrome com.google.android.googlequicksearchbox; do
   if sh_ pm list packages -u | grep -qx "package:$p"; then
     st=$(hidden_state "$p"); [ "$st" = "hidden=true" ] && pass "$p hidden" || fail "$p hidden" "$st"
   fi
@@ -121,12 +121,10 @@ blocked_open() { # name, am start args...
   sh_ am start "$@" >/dev/null; sleep 3
   local top; top=$(resumed)
   shot "open-$(echo "$name" | tr ' /:' '___')"
-  if echo "$top" | grep -qE "com.android.vending|com.android.settings|com.android.chrome"; then fail "$name is blocked" "$top"; else pass "$name is blocked"; fi
+  if echo "$top" | grep -qE "com.android.vending|com.android.chrome"; then fail "$name is blocked" "$top"; else pass "$name is blocked"; fi
 }
 blocked_open "market:// link" -a android.intent.action.VIEW -d "market://details?id=com.whatsapp"
 blocked_open "play.google.com link" -a android.intent.action.VIEW -d "https://play.google.com/store/apps/details?id=com.whatsapp"
-blocked_open "Settings app" -a android.settings.SETTINGS
-blocked_open "Wi-Fi settings page" -a android.settings.WIFI_SETTINGS
 blocked_open "Play Store main screen" -n com.android.vending/com.google.android.finsky.activities.MainActivity
 
 echo "== our own screens open"
@@ -138,10 +136,11 @@ tap_text() { # tap the first on-screen element whose text starts with $1
   sh_ input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )) >/dev/null
 }
 home
-tap_text "Settings"; sleep 3; shot 02-settings
-resumed | grep -q "$PKG/.SettingsActivity" && pass "Our Settings screen opens" || fail "Our Settings screen opens" "$(resumed)"
-tap_text "Wi-Fi networks"; sleep 4; shot 03-wifi
-resumed | grep -q "$PKG/.WifiActivity" && pass "Our Wi-Fi screen opens" || fail "Our Wi-Fi screen opens" "$(resumed)"
+tap_text "Google account"; sleep 3; shot 02-google-account
+resumed | grep -q "$PKG/.SettingsActivity" && pass "Our Google account screen opens" || fail "Our Google account screen opens" "$(resumed)"
+home
+tap_text "Settings"; sleep 4; shot 03-real-settings
+resumed | grep -q "com.android.settings/" && pass "The phone's real Settings app opens from the home screen" || fail "The phone's real Settings app opens from the home screen" "$(resumed)"
 if [ -n "$FIRST_ALLOWED" ]; then
   home
   sh_ monkey -p "$FIRST_ALLOWED" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1; sleep 4; shot 04-allowed-app
@@ -245,8 +244,8 @@ echo "== Google sign-in always has a way back"
 signin_state() { sh_ am broadcast -n $PKG/.dev.DevSignInReceiver "$@" | grep -o 'active=[a-z]*'; }
 signin_state --el timeout_ms 30000 >/dev/null
 ours() { resumed | grep -q "$PKG"; }
-open_signin() { # from home: Settings -> "Add Google account" (scrolls down to find it)
-  home; tap_text "Settings"; sleep 3
+open_signin() { # from home: "Google account" -> "Add Google account"
+  home; tap_text "Google account"; sleep 3
   for i in 1 2 3 4 5 6; do
     if tap_text "Add Google account"; then
       # Wait (up to 30 s; the emulator can be slow) until Google's page is in front,
@@ -269,7 +268,7 @@ open_signin; SIGNIN_FOUND=$?
 echo "top after tapping Add Google account: $(resumed)"
 grep -E "Google sign-in|AccountManager|E/AppsOnly|W/AppsOnly" "$OUT/logcat.txt" | grep -v "could not hide" | tail -15
 if [ $SIGNIN_FOUND != 0 ]; then
-  fail "Add Google account button found" "not on Settings screen"
+  fail "Add Google account button found" "not on Google account screen"
 elif ours; then
   # Google closed its page by itself (e.g. no internet): we must be back on our screen.
   shot 07-signin
@@ -300,6 +299,8 @@ else
   fi
 fi
 home
+
+source scripts/settings-test.sh
 
 echo "== reboot keeps the lock"
 stop_rec

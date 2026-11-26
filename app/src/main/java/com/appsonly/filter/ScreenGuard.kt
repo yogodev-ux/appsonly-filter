@@ -35,13 +35,17 @@ class ScreenGuard : AccessibilityService() {
             logOnce("shade_before_kiosk")
             return
         }
-        if (!blocked(this, pkg, cls)) return
-        Log.i(TAG, "Screen guard closed $pkg/$cls")
+        val title = event.text.joinToString(" ").trim()
+        if (pkg == settingsPkg) Log.i(TAG, "Settings screen: $cls \"$title\"")
+        if (!blocked(this, pkg, cls, title)) return
+        Log.i(TAG, "Screen guard closed $pkg/$cls \"$title\"")
         performGlobalAction(GLOBAL_ACTION_HOME)
         logOnce("$pkg/$cls")
     }
 
     override fun onInterrupt() {}
+
+    private val settingsPkg by lazy { AppScanner.settingsPackage(this) }
 
     private var lastLogged = ""
     private var lastLoggedAt = 0L
@@ -75,6 +79,40 @@ class ScreenGuard : AccessibilityService() {
             Regex("""com\.google\.android\.gms\.(accountsettings|app\.settings|mdm\.settings|kids|settings)\."""),
         )
 
+        /**
+         * The phone's real Settings app is open, but these parts of it are closed. Android's
+         * user restrictions already lock most of them; the guard is the second wall.
+         * Screens opened straight by name are matched by class; screens reached by tapping
+         * through Settings all share one class (SubSettings), so they are matched by title.
+         */
+        val SETTINGS_DENY_CLASS = Regex(
+            """(Accessibility|ApplicationDetails|InstalledAppDetails|AppInfo|ManageApplications|""" +
+                """AllApplications|DefaultApp|HomeSettings|AccountSettings|AccountDashboard|AccountSync|""" +
+                """DeviceAdmin|DevelopmentSettings|Development|FactoryReset|MainClear|ResetDashboard|""" +
+                """UserSettings|Users|VpnSettings|Vpn|PrivateDns|DateTime|SpecialAccess|ManageExternalSources|""" +
+                """ManageAppExternalSources|Overlay|UsageAccess|NotificationAccess|WriteSettings|ZenAccess|""" +
+                """PictureInPicture|ChangeWifiState|ManageExternalStorage|TrustAgent|Premium|DataSaver|""" +
+                """Captioning|TextToSpeech|Tts|ToggleScreen|TalkBack|SelectToSpeak|AppLocale|Autofill|""" +
+                """ManageAssist|Gestures|AssistGesture)"""
+        )
+        val SETTINGS_DENY_TITLE = setOf(
+            "accessibility", "talkback", "select to speak", "switch access", "voice access",
+            "apps", "app info", "all apps", "see all apps", "default apps", "home app", "special app access",
+            "display over other apps", "usage access", "install unknown apps", "notification access",
+            "device & app notifications", "modify system settings", "all files access", "alarms & reminders",
+            "picture-in-picture", "wi-fi control", "premium sms access", "unrestricted data",
+            "passwords & accounts", "passwords, passkeys & accounts", "accounts", "autofill service",
+            "device admin apps", "trust agents", "developer options", "reset options", "erase all data (factory reset)",
+            "multiple users", "users", "vpn", "private dns", "date & time", "text-to-speech output",
+            "app languages", "digital assistant app", "default digital assistant app",
+        )
+
+        private fun settingsBlocked(cls: String, title: String): Boolean {
+            if (SETTINGS_DENY_CLASS.containsMatchIn(cls.substringAfterLast('.'))) return true
+            val t = title.lowercase()
+            return t.isNotEmpty() && t in SETTINGS_DENY_TITLE
+        }
+
         /** Adding an account, allowed only while our own "Add Google account" is open. */
         private val ADD_ACCOUNT = Regex("""com\.google\.android\.gms\.auth\.uiflows\.addaccount\.""")
 
@@ -90,9 +128,10 @@ class ScreenGuard : AccessibilityService() {
         }
 
         /** True if this screen must be closed. */
-        fun blocked(ctx: Context, pkg: String, cls: String): Boolean {
+        fun blocked(ctx: Context, pkg: String, cls: String, title: String = ""): Boolean {
             if (!Prefs.load(ctx).locked) return false
             val a = allowed(ctx)
+            if (pkg == AppScanner.settingsPackage(ctx)) return settingsBlocked(cls, title)
             if (pkg in a.apps) return false
             if (!isActivity(ctx, pkg, cls)) return false // pop-ups, overlays, the keyboard itself, the shade
             if (pkg in a.keyboards) return true // keyboard settings screens

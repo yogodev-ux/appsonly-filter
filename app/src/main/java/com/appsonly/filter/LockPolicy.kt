@@ -22,8 +22,8 @@ object LockPolicy {
         UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES_GLOBALLY,
         UserManager.DISALLOW_UNINSTALL_APPS,
         UserManager.DISALLOW_APPS_CONTROL, // no force-stop, clear data or disable from Settings
-        // The real Settings app is hidden; these are a second wall in case any part of it
-        // is ever reachable:
+        // The phone's real Settings app is open to the customer; these lock its dangerous parts
+        // (the screen guard closes the riskiest screens as a second wall):
         UserManager.DISALLOW_FACTORY_RESET,
         UserManager.DISALLOW_SAFE_BOOT,
         UserManager.DISALLOW_ADD_USER,
@@ -34,7 +34,11 @@ object LockPolicy {
         UserManager.DISALLOW_CONFIG_CREDENTIALS,
         UserManager.DISALLOW_NETWORK_RESET,
         UserManager.DISALLOW_CONFIG_PRIVATE_DNS, // keep DNS going through our web filter
-    )
+        UserManager.DISALLOW_USER_SWITCH,
+        UserManager.DISALLOW_CONFIG_MOBILE_NETWORKS, // an APN proxy could get around the web filter
+        UserManager.DISALLOW_BLUETOOTH_SHARING,
+        UserManager.DISALLOW_CONFIG_TETHERING,
+    ) + (if (android.os.Build.VERSION.SDK_INT >= 34) listOf("no_config_default_apps") else emptyList())
 
     /**
      * Blocks Developer options and USB debugging. Left off in debug (test) builds,
@@ -56,6 +60,8 @@ object LockPolicy {
     /** Packages the customer can see and use once locked. */
     fun visiblePackages(ctx: Context, cfg: LockConfig): Set<String> {
         val result = cfg.allowedPackages.toMutableSet()
+        // The phone's own Settings app is always there (its risky parts are locked).
+        result += AppScanner.settingsPackage(ctx)
         if (cfg.allowPhone) result += AppScanner.phonePackages(ctx)
         if (cfg.allowSms) result += AppScanner.smsPackages(ctx)
         // Browsers are never allowed, even if they also act as a dialer or similar.
@@ -97,7 +103,6 @@ object LockPolicy {
         val visible = visiblePackages(ctx, cfg)
         val untouchable = AppScanner.untouchable(ctx)
         val webView = AppScanner.webViewPackage()
-        // The real Settings app is hidden too; our own Settings screen replaces it.
         val targets = AppScanner.launchable(ctx) + AppScanner.browsers(ctx) +
             AppScanner.homeApps(ctx) + AppScanner.PLAY_STORE + AppScanner.settingsPackage(ctx)
 
@@ -134,6 +139,9 @@ object LockPolicy {
         }
         StoreGuard.apply(ctx, dpm, admin)
         KioskMode.configure(ctx, dpm, admin, visible)
+        // Accessibility in Settings: only the phone's built-in services and our screen guard
+        // can be switched on (an accessibility app could read and press anything).
+        try { dpm.setPermittedAccessibilityServices(admin, listOf(ctx.packageName)) } catch (e: Exception) { Log.w(TAG, "accessibility list", e) }
         TamperGuard.apply(ctx, dpm, admin)
 
         // 4. Device Owner extras for our own Settings screen and web filter.
