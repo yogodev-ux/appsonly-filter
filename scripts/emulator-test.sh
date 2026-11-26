@@ -228,6 +228,12 @@ echo "---- tamper events in the app log ----"
 grep -E "AppsOnlyTamper|W/AppsOnly|E/AppsOnly" "$OUT/logcat.txt" | grep -v "could not hide" | tail -30
 tamperlog > "$OUT/tamper-log.txt"
 
+echo "== location notice shows only once"
+for i in 1 2 3 4; do home; sleep 2; done
+sleep 3
+N=$(grep -c "granted android.permission.ACCESS_FINE_LOCATION" "$OUT/logcat.txt")
+[ "$N" -le 1 ] && pass "Location permission granted once (no repeated 'has location access' pop-up)" || fail "Location permission granted once (no repeated 'has location access' pop-up)" "granted $N times"
+
 echo "== Google sign-in always has a way back"
 signin_state() { sh_ am broadcast -n $PKG/.dev.DevSignInReceiver "$@" | grep -o 'active=[a-z]*'; }
 signin_state --el timeout_ms 30000 >/dev/null

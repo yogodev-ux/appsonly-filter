@@ -29,8 +29,14 @@ object DeviceControls {
         val admin = AdminReceiver.component(ctx)
         for (perm in SELF_PERMISSIONS) {
             try {
+                // Only grant once: every grant of location makes Android show the
+                // "Apps Only has location access" notification again, and this runs on
+                // every home-screen visit.
+                if (dpm.getPermissionGrantState(admin, ctx.packageName, perm) ==
+                    DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED) continue
                 dpm.setPermissionGrantState(admin, ctx.packageName, perm,
                     DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
+                Log.i(TAG, "granted $perm")
             } catch (e: Exception) { Log.w(TAG, "grant $perm", e) }
         }
         // Wi-Fi scan results need location turned on.
