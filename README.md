@@ -236,3 +236,17 @@ Plan: see the "Portals plan" doc. Part 1 is done here:
   refused once the phone is locked). Nothing of it goes into the setup log.
 - The app sends them to the server (`POST /v1/customer`) when it's online, then deletes them from
   the phone. The server keeps the removal code only as a PBKDF2 hash and never shows it.
+
+## Portals, part 2: server side (no web pages yet)
+
+- One sign-in for everyone (`auth.js`). The owner signs in as `owner` with `OWNER_PASSWORD`;
+  staff accounts are stored on the server. The role decides which portal opens (parts 3 and 4).
+  Password only, 5 wrong tries lock that user name for 15 minutes, sessions last 12 hours.
+- What the portals can do (`services.js`), each step written to the action log with who and why:
+  search customers by name, phone or email; remove the filter with the customer's removal code
+  (5 wrong codes block removal for that phone for an hour and alert the owner); owner only:
+  remove without a code, mark paid, lock again, mark alerts handled.
+- Code reset by email: support sends the customer a one-time link (24 hours) at `/reset/<token>`
+  to choose a new removal code. Emails are only queued in the log until an email service is picked.
+- Alerts for the owner: tamper reports from the phone (`POST /v1/tamper`), failed setups (from the
+  installer log), phones unpaid for 3 days, too many wrong removal codes, and code resets.

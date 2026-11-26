@@ -1,6 +1,7 @@
 // Runs the server on plain Node (local testing and CI; any small VPS works too).
 // Settings come from environment variables:
 //   PORT (8787)  BASE_URL  DATA_FILE (data.json)  ADMIN_TOKEN
+//   OWNER_PASSWORD (sign-in for the owner portal, user name "owner")
 //   LICENSE_PRIVATE_JWK (JSON; default: the committed TEST key)
 //   PAYMENTS=test|stripe  STRIPE_SECRET_KEY  STRIPE_WEBHOOK_SECRET  PRICE_CENTS  CURRENCY  PRICE_TEXT
 import http from 'node:http';
@@ -27,6 +28,7 @@ const payments = env.PAYMENTS === 'stripe'
     })
   : new TestPayments();
 
+if (!env.OWNER_PASSWORD) console.warn('OWNER_PASSWORD is not set, so nobody can sign in as the owner.');
 const app = createApp({
   store: new FileStore(env.DATA_FILE ?? 'data.json'),
   signer: await createSigner(privateJwk),
@@ -34,6 +36,7 @@ const app = createApp({
   adminToken: env.ADMIN_TOKEN ?? '',
   baseUrl,
   priceText: env.PRICE_TEXT ?? '',
+  ownerPassword: env.OWNER_PASSWORD ?? '',
 });
 
 http
@@ -52,3 +55,6 @@ http
     console.log(`${req.method} ${req.url} -> ${response.status}`);
   })
   .listen(port, '0.0.0.0', () => console.log(`Apps Only server on ${baseUrl} (payments: ${payments.name})`));
+
+// Phones set up but unpaid for 3 days become alerts; check every hour.
+setInterval(() => app.services.checkUnpaid().catch((e) => console.error(e)), 3600 * 1000).unref();
