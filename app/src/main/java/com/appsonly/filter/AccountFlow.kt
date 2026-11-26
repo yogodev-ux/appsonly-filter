@@ -24,7 +24,8 @@ import android.widget.Toast
  * Google's sign-in can end on a page with no buttons (for example "Couldn't sign in" when
  * there is no internet). So there is always a way back to our screens:
  *  - a notification "Back to home" for the whole time the sign-in is open,
- *  - Google's sign-in opens in its own task, so Home always shows our home screen (and ends it),
+ *  - Google's sign-in opens in its own task, so Home always shows our home screen; leaving
+ *    closes that task, so a Google page can't jump back in front,
  *  - after [timeoutMs] we close the sign-in window and come back on our own.
  */
 object AccountFlow {
@@ -78,8 +79,12 @@ object AccountFlow {
                     return@addAccount
                 }
                 try {
+                    // Google's pages go into a task that belongs to us (SignInHostActivity),
+                    // so we can close all of them at once when the customer leaves.
                     activity.startActivity(
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                        Intent(activity, SignInHostActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                            .putExtra(SignInHostActivity.EXTRA_INTENT, intent)
                     )
                     Log.i(TAG, "Google sign-in opened")
                 } catch (e: Exception) {
@@ -98,10 +103,25 @@ object AccountFlow {
         if (!active) return
         active = false
         setAllowed(ctx, false)
+        closeSignInTask(ctx)
         try { ctx.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID) } catch (e: Exception) { }
         val added = googleAccountNames(ctx).size > accountsBefore
         Log.i(TAG, "Google sign-in closed (account added: $added), account changes blocked again")
         if (added) Toast.makeText(ctx, "Google account added", Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * Removes the task holding Google's sign-in pages. Without this, a Google page that was
+     * still loading could jump back in front after the customer pressed Home.
+     */
+    private fun closeSignInTask(ctx: Context) {
+        try {
+            val host = SignInHostActivity::class.java.name
+            for (task in ctx.getSystemService(android.app.ActivityManager::class.java).appTasks) {
+                val info = try { task.taskInfo } catch (e: Exception) { continue }
+                if (info.baseActivity?.className == host) task.finishAndRemoveTask()
+            }
+        } catch (e: Exception) { Log.w(TAG, "close sign-in task", e) }
     }
 
     private fun backIntent(ctx: Context) = Intent(ctx, SettingsActivity::class.java)
