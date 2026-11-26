@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
-    <application android:label="Escape probe" android:allowBackup="false"
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:label="Escape probe" android:allowBackup="false" android:usesCleartextTraffic="true"
         android:icon="@android:drawable/ic_menu_search">
         <activity android:name=".Probe" android:exported="true" android:launchMode="standard">
             <intent-filter>

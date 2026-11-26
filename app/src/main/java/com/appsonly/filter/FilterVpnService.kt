@@ -16,12 +16,18 @@ import java.net.InetSocketAddress
 import java.util.concurrent.Executors
 
 /**
- * Local "VPN" that only carries DNS lookups. Normal traffic never enters it.
+ * Local "VPN" that all of the phone's traffic goes through (except our own app's).
  *
- * Every app's name lookups are sent to [DNS_IP], which is routed into this service. We find
- * out which app asked, check [WebFilter], and either forward the question to the real DNS
- * server or answer "no such site". Answers are given a zero cache time so one app's lookup
- * can't be reused by another app.
+ * Name lookups: every app's lookups (to [DNS_IP] or to any other DNS server) are answered
+ * here. We find out which app asked, check [WebFilter], and either forward the question to
+ * the real DNS server or answer "no such site". Answers are given a zero cache time so one
+ * app's lookup can't be reused by another app, and the addresses in allowed answers are
+ * remembered for that app.
+ *
+ * Connections: [Relay] lets an app connect only to addresses it looked up through us and was
+ * allowed. So a Wi-Fi proxy, a typed-in IP address or an app's own secure DNS can't get
+ * around the name filter. IPv6 is swallowed (lookups for IPv6 addresses get an empty answer,
+ * so apps use IPv4).
  */
 class FilterVpnService : VpnService() {
 
@@ -29,10 +35,12 @@ class FilterVpnService : VpnService() {
         private const val TAG = WebFilter.TAG
         const val TUN_IP = "10.111.0.1"
         const val DNS_IP = "10.111.0.2"
+        const val TUN_IP6 = "fd6f:6f6f::1"
         private val FALLBACK_DNS = listOf("8.8.8.8", "1.1.1.1")
     }
 
     @Volatile private var tun: ParcelFileDescriptor? = null
+    @Volatile private var relay: Relay? = null
     private var reader: Thread? = null
     private val pool = Executors.newFixedThreadPool(8)
     private val debug by lazy { (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 }
@@ -58,8 +66,11 @@ class FilterVpnService : VpnService() {
         val builder = Builder()
             .setSession("Apps Only web filter")
             .addAddress(TUN_IP, 32)
+            .addAddress(TUN_IP6, 128)
             .addDnsServer(DNS_IP)
-            .addRoute(DNS_IP, 32)
+            .addRoute("0.0.0.0", 0)
+            .addRoute("::", 0)
+            .setMtu(1500)
             .setBlocking(true)
         try { builder.addDisallowedApplication(packageName) } catch (e: Exception) { /* not fatal */ }
         val fd = try { builder.establish() } catch (e: Exception) { Log.w(TAG, "establish", e); null }
@@ -71,6 +82,8 @@ class FilterVpnService : VpnService() {
 
     private fun stop() {
         reader?.interrupt()
+        relay?.shutdown()
+        relay = null
         try { tun?.close() } catch (e: Exception) {}
         tun = null
     }
@@ -78,35 +91,58 @@ class FilterVpnService : VpnService() {
     private fun readLoop(fd: ParcelFileDescriptor) {
         val input = FileInputStream(fd.fileDescriptor)
         val output = FileOutputStream(fd.fileDescriptor)
+        val r = Relay(this, output, ::ownerUid, { uid, ip, _ -> WebFilter.connectAllowed(this, uid, ip) }, debug)
+        relay = r
         val buf = ByteArray(32767)
         while (!Thread.currentThread().isInterrupted) {
             val n = try { input.read(buf) } catch (e: Exception) { break }
             if (n <= 0) continue
-            val packet = buf.copyOf(n)
-            pool.execute { handle(packet, output) }
+            try { dispatch(buf, n, output, r) } catch (e: Exception) { Log.w(TAG, "packet", e) }
         }
     }
 
-    private fun handle(p: ByteArray, out: FileOutputStream) {
-        try {
-            val q = Packets.parseUdpIpv4(p) ?: run {
-                if (debug) Log.i(TAG, "ignored non-UDP/IPv4 packet: version=${p[0].toInt() shr 4} proto=${if (p.size > 9) p[9].toInt() else -1}")
-                return
+    private fun ownerUid(proto: Int, src: InetSocketAddress, dst: InetSocketAddress): Int = try {
+        getSystemService(ConnectivityManager::class.java).getConnectionOwnerUid(proto, src, dst)
+    } catch (e: Exception) { -1 }
+
+    /** Sends one packet from the phone to the right place. Runs on the reading thread. */
+    private fun dispatch(buf: ByteArray, n: Int, out: FileOutputStream, r: Relay) {
+        if (n < 20 || (buf[0].toInt() shr 4) != 4) return // IPv6 and junk: dropped
+        val ihl = (buf[0].toInt() and 0x0f) * 4
+        val total = minOf(((buf[2].toInt() and 0xff) shl 8) or (buf[3].toInt() and 0xff), n)
+        if (total < ihl) return
+        // Fragments other than the first carry no port numbers: dropped.
+        if ((((buf[6].toInt() and 0x1f) shl 8) or (buf[7].toInt() and 0xff)) != 0) return
+        when (buf[9].toInt()) {
+            6 -> {
+                val p = buf.copyOf(total)
+                val src = InetAddress.getByAddress(p.copyOfRange(12, 16))
+                val dst = InetAddress.getByAddress(p.copyOfRange(16, 20))
+                r.onTcp(p, ihl, total, src, dst)
             }
-            if (q.dstPort != 53) return
+            17 -> {
+                val p = buf.copyOf(n)
+                val q = Packets.parseUdpIpv4(p) ?: return
+                if (q.dstPort == 53) pool.execute { handle(q, out) } else r.onUdp(q)
+            }
+            else -> {} // ping and others: dropped
+        }
+    }
+
+    private fun handle(q: Packets.Udp, out: FileOutputStream) {
+        try {
             val host = Dns.questionName(q.payload) ?: return
-            val cm = getSystemService(ConnectivityManager::class.java)
-            val uid = try {
-                cm.getConnectionOwnerUid(OsConstants.IPPROTO_UDP,
-                    InetSocketAddress(q.src, q.srcPort), InetSocketAddress(q.dst, q.dstPort))
-            } catch (e: Exception) { -1 }
+            val uid = ownerUid(OsConstants.IPPROTO_UDP, InetSocketAddress(q.src, q.srcPort), InetSocketAddress(q.dst, q.dstPort))
 
             val ok = WebFilter.allowed(this, uid, host)
             WebFilter.logLookup(this, uid, host, ok)
-            val answer = if (ok) {
-                forward(q.payload)?.let { Dns.zeroTtl(it) } ?: Dns.failure(q.payload, rcode = 2)
-            } else {
+            val answer = if (!ok) {
                 Dns.failure(q.payload, rcode = 3) // NXDOMAIN: "no such site"
+            } else if (Dns.questionType(q.payload) == 28) {
+                Dns.failure(q.payload, rcode = 0) // IPv6 address: "none", so the app uses IPv4
+            } else {
+                forward(q.payload)?.let { Dns.zeroTtl(it) }?.also { WebFilter.remember(uid, Dns.answerIps(it)) }
+                    ?: Dns.failure(q.payload, rcode = 2)
             }
             val reply = Packets.buildUdpIpv4(q.dst, q.src, q.dstPort, q.srcPort, answer)
             synchronized(out) { out.write(reply) }
@@ -237,6 +273,28 @@ object Dns {
         var i = 12
         repeat(u16(m, 4)) { i = (skipName(m, i) ?: return null) + 4 }
         return i
+    }
+
+    /** The question's record type (1 = IPv4 address, 28 = IPv6 address), or -1. */
+    fun questionType(msg: ByteArray): Int {
+        if (msg.size < 12 || u16(msg, 4) < 1) return -1
+        val i = skipName(msg, 12) ?: return -1
+        return if (i + 2 <= msg.size) u16(msg, i) else -1
+    }
+
+    /** IPv4 addresses in an answer's answer section. */
+    fun answerIps(m: ByteArray): List<InetAddress> {
+        if (m.size < 12) return emptyList()
+        val ips = mutableListOf<InetAddress>()
+        var i = questionEnd(m) ?: return ips
+        repeat(u16(m, 6)) {
+            i = skipName(m, i) ?: return ips
+            if (i + 10 > m.size) return ips
+            val type = u16(m, i); val len = u16(m, i + 8)
+            if (type == 1 && len == 4 && i + 14 <= m.size) ips.add(InetAddress.getByAddress(m.copyOfRange(i + 10, i + 14)))
+            i += 10 + len
+        }
+        return ips
     }
 
     /** Sets every record's cache time to 0 so the phone doesn't share answers between apps. */
