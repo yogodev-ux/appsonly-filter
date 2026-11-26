@@ -26,8 +26,17 @@ class FilterApp : Application() {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 // Our own policy changes also fire these; ignore those and coalesce bursts.
-                if (intent.data?.schemeSpecificPart == packageName) return
-                scheduleEnforce()
+                val pkg = intent.data?.schemeSpecificPart ?: return
+                if (pkg == packageName) return
+                android.util.Log.i("AppsOnly", "package change from $pkg (${intent.action})")
+                // A brand-new app that isn't allowed (e.g. installed remotely from the Play Store
+                // website) is hidden right away. Updates of allowed apps are left alone.
+                val newApp = intent.action == Intent.ACTION_PACKAGE_ADDED &&
+                    !intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)
+                if (newApp && pkg !in Prefs.load(context).allowedPackages) {
+                    android.util.Log.i("AppsOnly", "new app installed: $pkg, checking now")
+                    enforceAsync()
+                } else scheduleEnforce()
             }
         }
         registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)

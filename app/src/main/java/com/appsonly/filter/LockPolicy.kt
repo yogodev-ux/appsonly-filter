@@ -98,8 +98,11 @@ object LockPolicy {
         val untouchable = AppScanner.untouchable(ctx)
         val webView = AppScanner.webViewPackage()
         // The real Settings app is hidden too; our own Settings screen replaces it.
+        // Any app a user installed is a target too, even one without an icon (for example one
+        // installed remotely from the Play Store website), so it can't run in the background.
         val targets = AppScanner.launchable(ctx) + AppScanner.browsers(ctx) +
-            AppScanner.homeApps(ctx) + AppScanner.PLAY_STORE + AppScanner.settingsPackage(ctx)
+            AppScanner.homeApps(ctx) + AppScanner.PLAY_STORE + AppScanner.settingsPackage(ctx) +
+            AppScanner.userInstalled(ctx)
 
         val toSuspend = mutableListOf<String>()
         for (pkg in targets) {
