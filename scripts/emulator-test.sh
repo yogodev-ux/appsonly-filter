@@ -22,6 +22,22 @@ shot() { adb exec-out screencap -p > "$OUT/$1.png" 2>/dev/null || true; }
 resumed() { sh_ dumpsys activity activities | grep -m1 -E "mResumedActivity|topResumedActivity" ; }
 home() { sh_ input keyevent KEYCODE_HOME >/dev/null; sleep 2; }
 
+# Screen recording, in segments (Android stops a recording after 3 minutes).
+REC_N=0
+start_rec() {
+  ( while true; do
+      REC_N=$((REC_N+1))
+      adb shell screenrecord --bit-rate 2000000 --time-limit 170 "/sdcard/rec-$(date +%s).mp4" >/dev/null 2>&1 || sleep 2
+    done ) &
+  REC_PID=$!
+}
+stop_rec() { # stop recording and pull the videos
+  kill $REC_PID 2>/dev/null; sh_ pkill -INT screenrecord >/dev/null; sleep 3
+  mkdir -p "$OUT/video"
+  for f in $(sh_ ls /sdcard/ | grep '^rec-.*\.mp4$'); do adb pull "/sdcard/$f" "$OUT/video/$f" >/dev/null 2>&1; sh_ rm "/sdcard/$f" >/dev/null; done
+}
+start_rec
+
 adb logcat -c
 adb logcat -v time > "$OUT/logcat.txt" &
 LOGCAT_PID=$!
@@ -147,15 +163,19 @@ echo "---- blocked lookups ----"
 head -40 "$OUT/blocked-lookups.txt"
 
 echo "== reboot keeps the lock"
+stop_rec
 adb reboot
 adb wait-for-device
 for i in $(seq 1 90); do [ "$(sh_ getprop sys.boot_completed)" = "1" ] && break; sleep 2; done
+start_rec
 sleep 15
 shot 05-after-reboot
 st=$(hidden_state com.android.chrome)
 [ "$st" = "hidden=true" ] || [ -z "$(sh_ pm list packages -u | grep -x package:com.android.chrome)" ] && pass "Lock survives reboot" || fail "Lock survives reboot" "$st"
 resumed | grep -q "$PKG" && pass "Our home screen after reboot" || fail "Our home screen after reboot" "$(resumed)"
 
+sleep 5
+stop_rec
 kill $LOGCAT_PID 2>/dev/null || true
 adb logcat -d -v time > "$OUT/logcat-after-reboot.txt" 2>/dev/null || true
 
