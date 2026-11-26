@@ -17,10 +17,15 @@ What it does once locked:
   the customer can't open it: it is suspended where the phone allows, and otherwise (many phones
   refuse because the store is the system's app verifier) it has no icon and every link into it
   (`market://`, `play.google.com`) opens a "not available" screen instead.
+- Runs in Android's **kiosk mode** (lock task): only allowed apps, our own screens and a few system
+  helpers (permission prompts, file/photo pickers, share sheet, calls, Google sign-in) can open at
+  all. Links or notifications that try to open anything else (Play Store, Settings, camera, ...)
+  do nothing. Quick Settings is turned off; the notification shade, Home, recent apps, power menu
+  and screen lock still work.
 - **Hides the phone's Settings app** and replaces it with our own Settings screen (the "Settings"
   tile). Every control there is done by this app itself, so there are no links into the system:
   Wi-Fi (on/off, network list, connect with password, forget), Bluetooth on/off, volume,
-  vibrate, brightness, screen timeout, set/remove screen-lock PIN, add Google account.
+  vibrate, brightness, screen timeout, flashlight, set/remove screen-lock PIN, add Google account.
 - **Add Google account** opens only Google's sign-in. Account changes are unlocked only while
   that sign-in is open and locked again the moment it finishes or is cancelled.
 - **Always-on web filter** (a local VPN that carries only DNS lookups, so normal traffic is not
@@ -108,8 +113,6 @@ made Device Owner again and unlocked with the broadcast above (or the phone is f
 
 ## Known limits to check while testing
 
-- The Play Store can still show notifications (e.g. "apps updated"); tapping one may open the
-  store. Please check this on the emulator.
 - **App updates**: no "install apps" block is used. New apps from `adb install` or sideloading are
   blocked (unknown sources), and anything new that the Play Store installs is hidden right away.
   Updates of allowed apps through the (suspended, hidden) Play Store should keep working. To

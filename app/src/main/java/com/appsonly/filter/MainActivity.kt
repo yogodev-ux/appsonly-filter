@@ -47,6 +47,7 @@ class MainActivity : Activity() {
             !cfg.locked -> showSetup()
             else -> {
                 showHome(cfg)
+                KioskMode.enter(this)
                 // Catch anything installed since last time, then refresh the icons.
                 app.enforceAsync { runOnUiThread { if (!isFinishing) showHome(Prefs.load(this)) } }
             }

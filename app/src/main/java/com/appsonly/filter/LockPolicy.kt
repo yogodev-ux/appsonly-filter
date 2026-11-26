@@ -120,6 +120,7 @@ object LockPolicy {
             }
         }
         StoreGuard.apply(ctx, dpm, admin)
+        KioskMode.configure(ctx, dpm, admin, visible)
 
         // 4. Device Owner extras for our own Settings screen and web filter.
         DeviceControls.prepare(ctx)
@@ -174,6 +175,7 @@ object LockPolicy {
             try { dpm.clearUserRestriction(admin, r) } catch (e: Exception) { Log.w(TAG, "clear $r", e) }
         }
         dpm.clearPackagePersistentPreferredActivities(admin, ctx.packageName)
+        KioskMode.clear(dpm, admin)
         try { dpm.setAlwaysOnVpnPackage(admin, null, false) } catch (e: Exception) { Log.w(TAG, "vpn off", e) }
         Prefs.clear(ctx)
         dpm.clearDeviceOwnerApp(ctx.packageName)

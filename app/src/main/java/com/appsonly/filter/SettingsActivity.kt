@@ -45,6 +45,7 @@ class SettingsActivity : Activity() {
         bluetoothSection()
         soundSection()
         displaySection()
+        flashlightSection()
         lockSection()
         accountSection()
         setContentView(ScrollView(this).apply { addView(col) })
@@ -148,6 +149,21 @@ class SettingsActivity : Activity() {
                 .setItems(choices.map { it.second }.toTypedArray()) { _, i ->
                     DeviceControls.setScreenTimeout(this, choices[i].first); build()
                 }.show()
+        }
+    }
+
+    private var torchOn = false
+
+    private fun flashlightSection() {
+        val cm = getSystemService(android.hardware.camera2.CameraManager::class.java) ?: return
+        val id = try {
+            cm.cameraIdList.firstOrNull {
+                cm.getCameraCharacteristics(it).get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+            }
+        } catch (e: Exception) { null } ?: return
+        title("Flashlight")
+        switch("Flashlight", torchOn) { on ->
+            try { cm.setTorchMode(id, on); torchOn = on } catch (e: Exception) { toast("Flashlight not available") }
         }
     }
 
