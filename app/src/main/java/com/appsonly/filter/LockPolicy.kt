@@ -137,6 +137,7 @@ object LockPolicy {
 
     private fun hide(dpm: DevicePolicyManager, admin: ComponentName, pkg: String) {
         try {
+            if (dpm.isApplicationHidden(admin, pkg)) return
             if (!dpm.setApplicationHidden(admin, pkg, true)) Log.w(TAG, "could not hide $pkg")
         } catch (e: Exception) {
             Log.w(TAG, "hide $pkg", e)
@@ -148,8 +149,12 @@ object LockPolicy {
             addCategory(Intent.CATEGORY_HOME)
             addCategory(Intent.CATEGORY_DEFAULT)
         }
-        dpm.clearPackagePersistentPreferredActivities(admin, ctx.packageName)
-        dpm.addPersistentPreferredActivity(admin, filter, ComponentName(ctx, MainActivity::class.java))
+        val home = ComponentName(ctx, MainActivity::class.java)
+        @Suppress("DEPRECATION")
+        val current = ctx.packageManager.resolveActivity(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY)
+        if (current?.activityInfo?.name == home.className && current.activityInfo.packageName == home.packageName) return
+        dpm.addPersistentPreferredActivity(admin, filter, home)
     }
 
     /**

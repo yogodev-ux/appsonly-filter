@@ -155,7 +155,10 @@ expect com.android.vending www.wikipedia.org BLOCKED
 [ -n "$FIRST_ALLOWED" ] && expect "$FIRST_ALLOWED" www.wikipedia.org BLOCKED
 [ -n "$FIRST_ALLOWED" ] && expect "$FIRST_ALLOWED" firebaseinstallations.googleapis.com ALLOWED
 
+BEFORE=$(grep -c "using store guard" "$OUT/logcat.txt")
 sleep 20 # let background apps make some lookups
+AFTER=$(grep -c "using store guard" "$OUT/logcat.txt")
+[ $((AFTER-BEFORE)) -le 2 ] && pass "Lock check isn't running in a loop (battery)" || fail "Lock check isn't running in a loop (battery)" "$((AFTER-BEFORE)) runs in 20s"
 grep "BLOCKED" "$OUT/logcat.txt" | sed 's/.*BLOCKED/BLOCKED/' | sort | uniq -c | sort -rn > "$OUT/blocked-lookups.txt" || true
 echo "---- web filter log (first 80 lines) ----"
 grep -E "AppsOnlyFilter|AppsOnly" "$OUT/logcat.txt" | head -80

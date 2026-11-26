@@ -24,10 +24,23 @@ class FilterApp : Application() {
             addDataScheme("package")
         }
         val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) = enforceAsync()
+            override fun onReceive(context: Context, intent: Intent) {
+                // Our own policy changes also fire these; ignore those and coalesce bursts.
+                if (intent.data?.schemeSpecificPart == packageName) return
+                scheduleEnforce()
+            }
         }
         registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
         enforceAsync()
+    }
+
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private val delayed = Runnable { enforceAsync() }
+
+    /** Re-check a few seconds after the last package change. */
+    fun scheduleEnforce() {
+        main.removeCallbacks(delayed)
+        main.postDelayed(delayed, 3000)
     }
 
     fun enforceAsync(done: (() -> Unit)? = null) {
