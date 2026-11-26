@@ -77,7 +77,7 @@ class ScreenGuard : AccessibilityService() {
             Regex("""com\.android\.phone\..*(Setting|Options|IccPin|RadioInfo|BandMode|Fdn)"""),
             // Play services: Google Account, Google settings, Find My Device, parental controls
             // (any Play services screen with "settings" in its name, e.g. googlesettings.ui.GoogleSettingsActivity)
-            Regex("""com\.google\.android\.gms\..*([Ss]ettings|\.kids\.|\.mdm\.)"""),
+            Regex("""com\.google\.android\.gms\..*([Ss]ettings|\.kids\.|\.mdm\.|\.googlehelp\.|\.feedback\.)"""),
         )
 
         /** Adding an account, allowed only while our own "Add Google account" is open. */
