@@ -115,7 +115,10 @@ R=$(uninst "$(echo "$UCODE" | tr 'A-Z' 'a-z')"); [ "$R" = right ] && pass "Phone
 start_server
 owner_of_phone() { sh_ dumpsys device_policy | grep -A3 "Device Owner" | grep -q "$PKG"; }
 owner_of_phone && pass "Still Device Owner before the removal arrives" || fail "Still Device Owner before the removal arrives"
-L=$(lic); echo "license: $L"; sleep 3
+lic >/dev/null; sleep 3
+# Removing Device Owner can end the app's process before that broadcast answers, so ask again
+# without talking to the server.
+L=$(sh_ am broadcast -n $PKG/.dev.DevLicenseReceiver --ez refresh false | grep -o 'data="[^"]*"'); echo "license: $L"
 echo "$L" | grep -q "removed=true" && pass "Phone obeys the removal from the portal" || fail "Phone obeys the removal from the portal" "$L"
 owner_of_phone && fail "Device Owner is gone after removal" || pass "Device Owner is gone after removal"
 [ "$(hidden com.android.vending)" = "hidden=false" ] && pass "Hidden apps are back (Play Store)" || fail "Hidden apps are back (Play Store)" "$(hidden com.android.vending)"
