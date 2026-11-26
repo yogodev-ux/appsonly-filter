@@ -81,7 +81,7 @@ class MainActivity : Activity() {
         col.addView(text("Apps Only is not set up yet", 22f, bold = true))
         col.addView(text(
             "Connect this phone to a computer with USB debugging on, remove all accounts, " +
-                "then run:\n\nadb shell dpm set-device-owner com.appsonly.filter/.AdminReceiver\n\n" +
+                "then run:\n\nadb shell dpm set-device-owner --user 0 com.appsonly.filter/.AdminReceiver\n\n" +
                 "Then open this app again."
         ))
         setContentView(col)

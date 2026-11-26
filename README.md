@@ -70,8 +70,11 @@ Use a test phone, not your daily phone.
 4. Make it Device Owner:
 
    ```
-   adb shell dpm set-device-owner com.appsonly.filter/.AdminReceiver
+   adb shell dpm set-device-owner --user 0 com.appsonly.filter/.AdminReceiver
    ```
+
+   (`--user 0` is needed on newer Android versions such as 14; without it you can get a
+   misleading "there are already some accounts" error.)
 
    Expected output: `Success: Device owner set to package ComponentInfo{com.appsonly.filter/...}`.
    If it says there are already accounts or users on the device, go back to step 2.

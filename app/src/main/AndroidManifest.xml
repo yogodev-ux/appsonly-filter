@@ -5,6 +5,8 @@
     <!-- Needed to list installed apps for the picker (Android 11+ package visibility). -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
+    <!-- The web filter forwards allowed DNS lookups to the real DNS server. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Re-apply the lock after a reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
