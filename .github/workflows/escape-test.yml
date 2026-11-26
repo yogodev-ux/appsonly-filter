@@ -39,6 +39,19 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           script: bash scripts/escape-test.sh app/build/outputs/apk/debug/app-debug.apk testapps/escapeprobe/build/outputs/apk/debug/escapeprobe-debug.apk
+      # A few key screenshots, shrunk, as text in the log, so they can be read where the
+      # artifact zip can't be downloaded.
+      - name: Key screenshots in the log
+        if: always()
+        run: |
+          cd test-output/shots 2>/dev/null || exit 0
+          picks=$(ls 00-home.png quick-settings.png notification-shade.png power-menu.png 2>/dev/null
+                  ls From_allowed_app__Play_Store_main_screen.png From_allowed_app__Play_Store_details* 2>/dev/null | head -2
+                  ls boot-* sweep-* 2>/dev/null | head -4)
+          for f in $picks; do
+            if command -v convert >/dev/null; then convert "$f" -resize 360x -quality 60 /tmp/s.jpg; else cp "$f" /tmp/s.jpg; fi
+            echo "@@SHOT-BEGIN $f"; base64 -w 0 /tmp/s.jpg; echo; echo "@@SHOT-END $f"
+          done
       - name: Upload screenshots, video and logs
         if: always()
         uses: actions/upload-artifact@v4
