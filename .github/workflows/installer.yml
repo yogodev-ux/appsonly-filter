@@ -1,0 +1,103 @@
+name: Windows installer
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # Unit tests + the APKs the other jobs need.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Installer unit tests and jar
+        run: ./gradlew --no-daemon -p installer test fatJar
+      - name: Build app and test-account APKs
+        run: ./gradlew --no-daemon :app:assembleDebug :testapps:fakeaccount:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-inputs
+          path: |
+            installer/build/libs/apps-only-setup.jar
+            app/build/outputs/apk/debug/app-debug.apk
+            testapps/fakeaccount/build/outputs/apk/debug/fakeaccount-debug.apk
+
+  # The setup engine against a real (emulated) phone that already has an account.
+  emulator:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer-inputs
+          path: inputs
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run installer test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: playstore
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: bash scripts/installer-test.sh inputs/app/build/outputs/apk/debug/app-debug.apk inputs/testapps/fakeaccount/build/outputs/apk/debug/fakeaccount-debug.apk inputs/installer/build/libs/apps-only-setup.jar
+      - name: Upload logs and video
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-test
+          path: test-output/
+
+  # The Windows package: AppsOnlySetup.exe with its own Java, adb, and the app inside.
+  windows:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer-inputs
+          path: inputs
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force jp | Out-Null
+          Copy-Item inputs/installer/build/libs/apps-only-setup.jar jp/
+          jpackage --type app-image --name AppsOnlySetup --input jp --main-jar apps-only-setup.jar `
+            --main-class com.appsonly.installer.MainKt --app-version 0.1.0 --vendor "Apps Only" --dest dist
+          Invoke-WebRequest https://dl.google.com/android/repository/platform-tools-latest-windows.zip -OutFile pt.zip
+          Expand-Archive pt.zip -DestinationPath dist/AppsOnlySetup
+          Copy-Item inputs/app/build/outputs/apk/debug/app-debug.apk dist/AppsOnlySetup/apps-only.apk
+          Get-ChildItem dist/AppsOnlySetup
+      - name: Smoke test (no phone connected)
+        shell: pwsh
+        run: |
+          $out = & dist/AppsOnlySetup/runtime/bin/java.exe -jar dist/AppsOnlySetup/app/apps-only-setup.jar --check 2>&1 | Out-String
+          Write-Output $out
+          if ($out -notmatch "No phone found") { throw "installer did not run correctly on Windows" }
+          if (-not (Test-Path dist/AppsOnlySetup/AppsOnlySetup.exe)) { throw "exe missing" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AppsOnlySetup-windows
+          path: dist/

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="Test account" android:allowBackup="false">
+        <service
+            android:name=".Authenticator"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accounts.AccountAuthenticator" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accounts.AccountAuthenticator"
+                android:resource="@xml/authenticator" />
+        </service>
+        <!-- adb only (DUMP): adds the fake account. -->
+        <receiver
+            android:name=".AddAccountReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+    </application>
+</manifest>
