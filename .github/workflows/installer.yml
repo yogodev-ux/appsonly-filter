@@ -56,6 +56,10 @@ jobs:
           target: playstore
           arch: x86_64
           profile: pixel_6
+          # Same as the other emulator jobs: on the default 2 GB emulator adb drops right
+          # after boot on the shared CI machine ("error: closed" before the test starts).
+          ram-size: 4096M
+          cores: 4
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           script: bash scripts/installer-test.sh inputs/app/build/outputs/apk/debug/app-debug.apk inputs/testapps/fakeaccount/build/outputs/apk/debug/fakeaccount-debug.apk inputs/installer/build/libs/apps-only-setup.jar
