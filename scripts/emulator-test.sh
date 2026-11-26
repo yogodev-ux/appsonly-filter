@@ -170,9 +170,14 @@ expect com.android.vending www.wikipedia.org BLOCKED
 [ -n "$FIRST_ALLOWED" ] && expect "$FIRST_ALLOWED" firebaseinstallations.googleapis.com ALLOWED
 
 BEFORE=$(grep -c "using store guard" "$OUT/logcat.txt")
+PC_BEFORE=$(grep -c "package change from" "$OUT/logcat.txt")
 sleep 20 # let background apps make some lookups
 AFTER=$(grep -c "using store guard" "$OUT/logcat.txt")
-[ $((AFTER-BEFORE)) -le 2 ] && pass "Lock check isn't running in a loop (battery)" || fail "Lock check isn't running in a loop (battery)" "$((AFTER-BEFORE)) runs in 20s"
+PC_AFTER=$(grep -c "package change from" "$OUT/logcat.txt")
+# Google apps on the emulator update themselves in the background; each such change rightly
+# triggers a lock check. A loop is extra runs that no outside package change explains.
+RUNS=$((AFTER-BEFORE)); CHANGES=$((PC_AFTER-PC_BEFORE))
+[ $RUNS -le $((2+CHANGES)) ] && pass "Lock check isn't running in a loop (battery): $RUNS runs, $CHANGES outside app changes in 20s" || fail "Lock check isn't running in a loop (battery)" "$RUNS runs in 20s, only $CHANGES outside app changes"
 grep "BLOCKED" "$OUT/logcat.txt" | sed 's/.*BLOCKED/BLOCKED/' | sort | uniq -c | sort -rn > "$OUT/blocked-lookups.txt" || true
 echo "---- app log (errors and tamper events) ----"
 grep -E "AppsOnlyTamper|W/AppsOnly|E/AppsOnly|FRP" "$OUT/logcat.txt" | grep -v "could not hide" | head -40
@@ -300,6 +305,36 @@ else
   fi
 fi
 home
+
+echo "== apps installed later (e.g. remotely from the Play Store website)"
+NEW_APK=testapps/fakeaccount/build/outputs/apk/debug/fakeaccount-debug.apk
+NEW_PKG=com.appsonly.testaccount
+if [ -f "$NEW_APK" ]; then
+  adb install -r -t "$NEW_APK" > "$OUT/new-app-install.txt" 2>&1
+  ok=0
+  for i in $(seq 1 10); do sleep 1; [ "$(hidden_state $NEW_PKG)" = "hidden=true" ] && { ok=1; break; }; done
+  [ $ok = 1 ] && pass "Newly installed app is hidden within ${i}s (app with no icon)" || fail "Newly installed app is hidden" "$(hidden_state $NEW_PKG) / $(tail -1 "$OUT/new-app-install.txt")"
+  tamperlog | grep -q "new_app_hidden.*$NEW_PKG" && pass "Tamper log: new app hidden recorded" || fail "Tamper log: new app hidden recorded" "$(tamperlog)"
+else
+  fail "Newly installed app is hidden" "test APK not built: $NEW_APK"
+fi
+# An update of an allowed app must not hide it: reinstall the allowed app's own APK.
+if [ -n "$FIRST_ALLOWED" ]; then
+  paths=$(sh_ pm path "$FIRST_ALLOWED" | sed 's/^package://')
+  n=$(echo "$paths" | grep -c .)
+  i=0; files=""
+  for f in $paths; do i=$((i+1)); sh_ cp "$f" "/data/local/tmp/upd-$i.apk" >/dev/null; files="$files /data/local/tmp/upd-$i.apk"; done
+  if [ "$n" = 1 ]; then r=$(sh_ pm install -r $files); else r=$(sh_ "pm install-create -r | grep -o '[0-9]*' > /data/local/tmp/sid; s=\$(cat /data/local/tmp/sid); i=0; for f in $files; do i=\$((i+1)); pm install-write \$s p\$i \$f; done; pm install-commit \$s"); fi
+  echo "update of $FIRST_ALLOWED: $r"
+  sleep 8
+  if echo "$r" | grep -q Success; then
+    [ "$(hidden_state "$FIRST_ALLOWED")" = "hidden=false" ] && pass "Allowed app stays visible after an update" || fail "Allowed app stays visible after an update" "$(hidden_state "$FIRST_ALLOWED")"
+  else
+    fail "Allowed app can be updated" "$r"
+  fi
+  sh_ rm -f /data/local/tmp/upd-*.apk /data/local/tmp/sid >/dev/null
+fi
+echo "(A real Play Store auto-update needs a signed-in Google account, which the cloud emulator doesn't have.)"
 
 echo "== reboot keeps the lock"
 stop_rec
