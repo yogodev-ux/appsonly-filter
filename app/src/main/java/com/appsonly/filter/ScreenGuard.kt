@@ -165,7 +165,7 @@ class ScreenGuard : AccessibilityService() {
             if (pkg in HELPERS) {
                 // Google sign-in, only when the customer started it from Settings > Accounts > Add account
                 // (not when an allowed app opens it, for example from Play services' supervised-user page)
-                if (ADD_ACCOUNT.containsMatchIn(cls) && (KioskMode.googleSignInOpen() || AccountFlow.active)) return false
+                if (ADD_ACCOUNT.containsMatchIn(cls)) return !(KioskMode.googleSignInOpen() || AccountFlow.active)
                 return HELPER_DENY.any { it.containsMatchIn(cls) }
             }
             return true
