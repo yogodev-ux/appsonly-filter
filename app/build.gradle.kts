@@ -15,8 +15,21 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        // Fixed debug key, committed on purpose: every CI build is signed the same way, so a
+        // new test build installs over the old one (a Device Owner app is hard to uninstall).
+        // Debug keys are not secret. Release builds will get a real key kept out of the repo.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         debug {
+            signingConfig = signingConfigs.getByName("debug")
             // Debug builds are installed as test-only so the Device Owner can be
             // removed with `adb shell dpm remove-active-admin` while testing.
             isDebuggable = true

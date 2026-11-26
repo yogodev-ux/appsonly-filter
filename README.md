@@ -52,6 +52,10 @@ Every push builds a debug APK on GitHub Actions: open the **Actions** tab, pick 
 To build yourself: install Android Studio (or the Android SDK + JDK 17) and run `./gradlew assembleDebug`.
 The APK ends up in `app/build/outputs/apk/debug/app-debug.apk`.
 
+Debug builds are all signed with the same key (`app/debug.keystore`), so a new build installs
+over the previous one with `adb install -r -t app-debug.apk`, no uninstall needed. (Builds made
+before this key was added must be removed once with the developer unlock below.)
+
 ## Test on a phone
 
 Use a test phone, not your daily phone.
