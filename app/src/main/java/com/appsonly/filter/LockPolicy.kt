@@ -106,7 +106,7 @@ object LockPolicy {
         // Any app a user installed is a target too, even one without an icon (for example one
         // installed remotely from the Play Store website), so it can't run in the background.
         val targets = AppScanner.launchable(ctx) + AppScanner.browsers(ctx) +
-            AppScanner.homeApps(ctx) + AppScanner.PLAY_STORE + AppScanner.settingsPackage(ctx) +
+            AppScanner.homeApps(ctx) + AppScanner.PLAY_STORE +
             AppScanner.userInstalled(ctx)
 
         val toSuspend = mutableListOf<String>()
