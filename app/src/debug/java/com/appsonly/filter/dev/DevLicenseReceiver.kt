@@ -9,7 +9,7 @@ import com.appsonly.filter.LockPolicy
 /**
  * DEBUG BUILDS ONLY (adb, DUMP permission): asks the license server now and reports the result.
  *   adb shell am broadcast -n com.appsonly.filter/.dev.DevLicenseReceiver
- * Result: "paid=<true|false> status=<..> code=<pay code> error=<..>"
+ * Result: "paid=<true|false> status=<..> code=<pay code> removed=<true|false> error=<..>"
  */
 class DevLicenseReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -19,10 +19,10 @@ class DevLicenseReceiver : BroadcastReceiver() {
             try {
                 if (intent.getBooleanExtra("refresh", true)) {
                     License.refresh(ctx)
-                    LockPolicy.enforce(ctx)
+                    if (LockPolicy.isDeviceOwner(ctx)) LockPolicy.enforce(ctx)
                 }
                 val s = License.state(ctx)
-                pending.resultData = "paid=${s.paid} status=${s.status} code=${s.payCode} error=${s.lastError}"
+                pending.resultData = "paid=${s.paid} status=${s.status} code=${s.payCode} removed=${License.wasRemoved(ctx)} error=${s.lastError}"
             } finally {
                 pending.finish()
             }

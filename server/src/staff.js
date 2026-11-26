@@ -69,6 +69,11 @@ export function createStaffPortal({ store, services }) {
       actions = `<div class="card"><h2>The filter is removed</h2><p class="muted" style="margin:0">${d.removedSeenAt
         ? `The phone got the removal at ${when(d.removedSeenAt)}.`
         : 'The phone will remove it the next time it goes online. Ask the customer to connect it to the internet.'}</p></div>`;
+      const code = services.uninstallCodeFor(d);
+      if (code && !d.removedSeenAt) {
+        actions += `<div class="card"><h2>Phone can't go online?</h2><p class="muted" style="margin-top:0">Read the customer this uninstall code. They tap Remove the filter at the bottom of the phone's home screen and type it there.</p>` +
+          `<p style="font-size:1.6rem;letter-spacing:.08em;margin:.3rem 0"><code>${e(code)}</code></p></div>`;
+      }
     } else {
       actions = `<form class="card" method="post" action="/staff/customers/${e(d.id)}/remove"><h2>Remove the filter</h2>
 <p class="muted" style="margin-top:0">Ask the customer for the removal code they chose at setup. Never tell them a code.</p>

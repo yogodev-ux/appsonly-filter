@@ -5,7 +5,8 @@
 //   GET  /v1/license         Bearer <token>                       -> {status, license, payCode, payUrl}
 //   POST /v1/customer        Bearer <token> {customer: {name, phone, email, removalCode}}
 //                            the details the customer typed in the Windows installer; the removal
-//                            code is stored only as a hash
+//                            code is stored only as a hash; optional uninstallCode (XXXX-XXXX-XXXX)
+//                            for offline removal, shown in the portals only after removal
 //   POST /v1/tamper          Bearer <token> {events: [{type, detail}]}  -> alerts for the owner
 // Owner and staff (web pages, one sign-in; see web.js, owner.js, staff.js):
 //   GET/POST /login   POST /logout   /owner/...  (owner portal)   /staff/...  (staff portal)
@@ -117,7 +118,10 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
     if (digits < 7 || digits > 15 || phone.length > 25) return null;
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email) || email.length > 200) return null;
     if (code.length < 6 || code.length > 64 || /\s/.test(code)) return null;
-    return { name, phone, email, code };
+    // The phone's one-time uninstall code, for removing the filter while the phone is offline.
+    const uninstall = String(c.uninstallCode ?? '').toUpperCase();
+    if (uninstall && !/^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(uninstall)) return null;
+    return { name, phone, email, code, uninstall };
   }
 
   async function customer(request) {
@@ -130,6 +134,7 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
     if (device.removalCodeHash) return json({ ok: true, already: true });
     device.customer = { name: c.name, phone: c.phone, email: c.email, savedAt: now() };
     device.removalCodeHash = await hashSecret(c.code);
+    if (c.uninstall) device.uninstallCode = c.uninstall;
     device.lastSeen = now();
     await store.putDevice(device);
     return json({ ok: true });
@@ -226,7 +231,7 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
       if (p.startsWith('/v1/admin/')) {
         if (!isAdmin(request)) return json({ error: 'not allowed' }, 401);
         if (p === '/v1/admin/devices' && method === 'GET') {
-          const devices = (await store.listDevices()).map(({ tokenHash, installId, removalCodeHash, ...d }) => ({ ...d, hasRemovalCode: Boolean(removalCodeHash) }));
+          const devices = (await store.listDevices()).map(({ tokenHash, installId, removalCodeHash, uninstallCode, ...d }) => ({ ...d, hasRemovalCode: Boolean(removalCodeHash), hasUninstallCode: Boolean(uninstallCode) }));
           return json({ devices });
         }
         if (p === '/v1/admin/installer-logs' && method === 'GET') return json({ logs: await store.listLogs() });

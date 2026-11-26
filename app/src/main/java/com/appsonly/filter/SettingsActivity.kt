@@ -25,7 +25,10 @@ import android.widget.Toast
  */
 @SuppressLint("UseSwitchCompatOrMaterialCode", "MissingPermission")
 class SettingsActivity : Activity() {
-    companion object { const val EXTRA_ACCOUNT_ONLY = "account_only" }
+    companion object {
+        const val EXTRA_ACCOUNT_ONLY = "account_only"
+        const val EXTRA_REMOVE_ONLY = "remove_only"
+    }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private lateinit var col: LinearLayout
@@ -41,7 +44,10 @@ class SettingsActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(32), dp(20), dp(32))
         }
-        if (intent.getBooleanExtra(EXTRA_ACCOUNT_ONLY, false)) {
+        if (intent.getBooleanExtra(EXTRA_REMOVE_ONLY, false)) {
+            // From the home screen's "Remove the filter" link.
+            removeSection()
+        } else if (intent.getBooleanExtra(EXTRA_ACCOUNT_ONLY, false)) {
             // From the home screen's "Google account" tile: everything else is in the
             // phone's real Settings app.
             accountSection()
@@ -54,6 +60,7 @@ class SettingsActivity : Activity() {
             flashlightSection()
             lockSection()
             accountSection()
+            removeSection()
         }
         setContentView(ScrollView(this).apply { addView(col) })
     }
@@ -203,6 +210,38 @@ class SettingsActivity : Activity() {
                     pin.length < 4 -> toast("Use at least 4 digits")
                     DeviceControls.setPin(this, pin) -> toast("PIN saved")
                     else -> toast("Couldn't set the PIN")
+                }
+            }.show()
+    }
+
+    private fun removeSection() {
+        if (!LockPolicy.isDeviceOwner(this) || !Uninstall.hasCode(this)) return
+        title("Remove the filter")
+        note("Call support. After they check your removal code, the filter is removed the next time the phone goes online. If the phone can't go online, support reads you an uninstall code to type here.")
+        row("Type the uninstall code  ›") { askUninstallCode() }
+    }
+
+    private fun askUninstallCode() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            hint = "XXXX-XXXX-XXXX"
+        }
+        AlertDialog.Builder(this).setTitle("Uninstall code").setView(input)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Remove the filter") { _, _ ->
+                when (val r = Uninstall.check(this, input.text.toString())) {
+                    is Uninstall.Result.Right -> {
+                        (application as FilterApp).worker.execute {
+                            License.removeFilter(this, "with the uninstall code")
+                            runOnUiThread {
+                                startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP))
+                                finish()
+                            }
+                        }
+                    }
+                    is Uninstall.Result.Wrong -> toast("That code is wrong. ${r.triesLeft} tries left.")
+                    is Uninstall.Result.Blocked -> toast("Too many wrong codes. Try again in ${r.minutes} minutes.")
+                    is Uninstall.Result.NoCode -> toast("This phone has no uninstall code.")
                 }
             }.show()
     }

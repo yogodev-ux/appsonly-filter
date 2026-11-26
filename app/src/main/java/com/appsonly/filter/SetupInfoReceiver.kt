@@ -27,6 +27,8 @@ class SetupInfoReceiver : BroadcastReceiver() {
                     val json = JSONObject(String(Base64.decode(intent.getStringExtra("data") ?: "", Base64.DEFAULT), Charsets.UTF_8))
                     val problem = Customer.problem(json)
                     if (problem != null) problem else {
+                        // The phone's own one-time uninstall code goes to the server with the details.
+                        Uninstall.codeToSend(ctx)?.let { json.put("uninstallCode", it) }
                         Customer.savePending(ctx, json)
                         Log.i("AppsOnly", "customer details saved; waiting to send them to the server")
                         // Try right away if there's internet; otherwise License sends them later.
@@ -71,6 +73,7 @@ object Customer {
     /** The server has them: forget the removal code (and the rest) on the phone. */
     fun sent(ctx: Context) {
         sp(ctx).edit().remove("pending").putBoolean("sent", true).commit()
+        Uninstall.sent(ctx)
     }
 
     fun wasSent(ctx: Context) = sp(ctx).getBoolean("sent", false)

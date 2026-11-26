@@ -56,3 +56,13 @@ test('the staff device list never shows the removal code hash', async () => {
   assert.equal(list.devices[0].hasRemovalCode, true);
   assert.ok(!JSON.stringify(list).includes('pbkdf2'));
 });
+
+test('the phone may send its uninstall code; the admin list never shows it', async () => {
+  const { store, app, post, a } = await setup();
+  assert.equal((await post('/v1/customer', { customer: { ...details, uninstallCode: 'bad' } }, a.token)).status, 400);
+  assert.equal((await post('/v1/customer', { customer: { ...details, uninstallCode: 'abcd-efgh-jk23' } }, a.token)).status, 200);
+  assert.equal((await store.getDevice(a.deviceId)).uninstallCode, 'ABCD-EFGH-JK23');
+  const list = await (await app.handle(new Request(BASE + '/v1/admin/devices', { headers: { authorization: 'Bearer admin-secret' } }))).text();
+  assert.doesNotMatch(list, /ABCD-EFGH-JK23/);
+  assert.match(list, /"hasUninstallCode":true/);
+});

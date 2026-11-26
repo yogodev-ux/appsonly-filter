@@ -35,7 +35,7 @@ jobs:
         run: |
           mkdir -p test-output
           cd server
-          ADMIN_TOKEN=ci-admin DATA_FILE=../test-output/server-data.json nohup node src/node-server.js </dev/null > ../test-output/server.log 2>&1 &
+          ADMIN_TOKEN=ci-admin OWNER_PASSWORD=ci-owner-password DATA_FILE=../test-output/server-data.json nohup node src/node-server.js </dev/null > ../test-output/server.log 2>&1 &
           echo $! > ../test-output/server.pid
           sleep 2; curl -sf http://localhost:8787/health
       - name: Enable KVM

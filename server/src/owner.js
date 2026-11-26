@@ -169,7 +169,8 @@ ${rows || '<tr><td colspan="6" class="muted">No customers found.</td></tr>'}</ta
     }
     const removal = d.status !== 'removed' ? ''
       : d.removedSeenAt ? `<p>The phone got the removal at ${when(d.removedSeenAt)}.</p>`
-        : '<p class="muted">Waiting for the phone to go online and get the removal.</p>';
+        : '<p class="muted">Waiting for the phone to go online and get the removal.</p>' +
+          (services.uninstallCodeFor(d) ? `<p>Phone can't go online? Read the customer this uninstall code; they tap Remove the filter at the bottom of the phone's home screen and type it there: <code style="font-size:1.2rem">${e(services.uninstallCodeFor(d))}</code></p>` : '');
     const hist = (d.history ?? []).slice().reverse().map((h) =>
       `<tr><td>${when(h.at)}</td><td>${pill(h.status)}</td><td>${e(h.by ?? '')}</td><td>${e(h.reason ?? '')}</td></tr>`).join('');
     return page(url, who, v.name || d.payCode, `<p><a href="/owner/customers">All customers</a></p>

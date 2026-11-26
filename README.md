@@ -267,3 +267,17 @@ Plan: see the "Portals plan" doc. Part 1 is done here:
 - Find a customer by name, phone number or email; open them; remove the filter **only with the
   customer's removal code** (plus a reason), or email the customer a link to choose a new code.
 - Staff can't mark paid, unlock, remove without the code, or see sales, staff accounts or logs.
+
+## Portals, part 5: the phone side
+
+- **Removal from the portal (online):** when support removes the filter, the phone gets a signed
+  "removed" license on its next check-in (at most 5 minutes after the home screen opens, or the
+  15-minute watchdog) and turns back into a normal phone: all apps back, no Device Owner. It then
+  shows "The filter is removed".
+- **Offline removal:** at setup the phone makes a one-time uninstall code (`XXXX-XXXX-XXXX`) and
+  sends it to the server with the customer's details, then keeps only a salted hash. The portals
+  show it only after the filter was removed there (so the customer's removal code is still checked),
+  and only until the phone confirms. The customer taps "Remove the filter" at the bottom of the home screen (or in Settings while not paid) and types it.
+  5 wrong codes block the box for an hour.
+- **Tamper reports:** new tamper attempts from the phone's log are sent on each check-in and become
+  alerts in the owner portal.
