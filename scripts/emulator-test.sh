@@ -301,6 +301,36 @@ else
 fi
 home
 
+echo "== apps installed later (e.g. remotely from the Play Store website)"
+NEW_APK=testapps/fakeaccount/build/outputs/apk/debug/fakeaccount-debug.apk
+NEW_PKG=com.appsonly.testaccount
+if [ -f "$NEW_APK" ]; then
+  adb install -r -t "$NEW_APK" > "$OUT/new-app-install.txt" 2>&1
+  ok=0
+  for i in $(seq 1 10); do sleep 1; [ "$(hidden_state $NEW_PKG)" = "hidden=true" ] && { ok=1; break; }; done
+  [ $ok = 1 ] && pass "Newly installed app is hidden within ${i}s (app with no icon)" || fail "Newly installed app is hidden" "$(hidden_state $NEW_PKG) / $(tail -1 "$OUT/new-app-install.txt")"
+  tamperlog | grep -q "new_app_hidden.*$NEW_PKG" && pass "Tamper log: new app hidden recorded" || fail "Tamper log: new app hidden recorded" "$(tamperlog)"
+else
+  fail "Newly installed app is hidden" "test APK not built: $NEW_APK"
+fi
+# An update of an allowed app must not hide it: reinstall the allowed app's own APK.
+if [ -n "$FIRST_ALLOWED" ]; then
+  paths=$(sh_ pm path "$FIRST_ALLOWED" | sed 's/^package://')
+  n=$(echo "$paths" | grep -c .)
+  i=0; files=""
+  for f in $paths; do i=$((i+1)); sh_ cp "$f" "/data/local/tmp/upd-$i.apk" >/dev/null; files="$files /data/local/tmp/upd-$i.apk"; done
+  if [ "$n" = 1 ]; then r=$(sh_ pm install -r $files); else r=$(sh_ "pm install-create -r | grep -o '[0-9]*' > /data/local/tmp/sid; s=\$(cat /data/local/tmp/sid); i=0; for f in $files; do i=\$((i+1)); pm install-write \$s p\$i \$f; done; pm install-commit \$s"); fi
+  echo "update of $FIRST_ALLOWED: $r"
+  sleep 8
+  if echo "$r" | grep -q Success; then
+    [ "$(hidden_state "$FIRST_ALLOWED")" = "hidden=false" ] && pass "Allowed app stays visible after an update" || fail "Allowed app stays visible after an update" "$(hidden_state "$FIRST_ALLOWED")"
+  else
+    fail "Allowed app can be updated" "$r"
+  fi
+  sh_ rm -f /data/local/tmp/upd-*.apk /data/local/tmp/sid >/dev/null
+fi
+echo "(A real Play Store auto-update needs a signed-in Google account, which the cloud emulator doesn't have.)"
+
 echo "== reboot keeps the lock"
 stop_rec
 adb reboot

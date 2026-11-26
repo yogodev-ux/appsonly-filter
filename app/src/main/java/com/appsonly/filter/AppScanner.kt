@@ -37,6 +37,17 @@ object AppScanner {
     fun launchable(ctx: Context): Set<String> =
         query(ctx, Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER))
 
+    /**
+     * Apps installed by a user (not part of the phone's system image), with or without an icon.
+     * An app installed remotely from the Play Store website lands here.
+     */
+    fun userInstalled(ctx: Context): Set<String> =
+        ctx.packageManager.getInstalledApplications(0)
+            .filter { it.flags and (android.content.pm.ApplicationInfo.FLAG_SYSTEM or
+                android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0 }
+            .map { it.packageName }
+            .toSet()
+
     /** Anything that can open an arbitrary web page. */
     fun browsers(ctx: Context): Set<String> {
         val result = mutableSetOf<String>()
