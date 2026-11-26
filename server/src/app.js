@@ -6,6 +6,9 @@
 //   POST /v1/customer        Bearer <token> {customer: {name, phone, email, removalCode}}
 //                            the details the customer typed in the Windows installer; the removal
 //                            code is stored only as a hash
+//   POST /v1/tamper          Bearer <token> {events: [{type, detail}]}  -> alerts for the owner
+// Customer (from the reset email):
+//   GET/POST /reset/<token>  choose a new removal code
 // Customer (any browser, e.g. on a PC, since the phone can't browse):
 //   GET  /pay/<code>         page with the price and a Pay button
 //   GET  /pay/<code>/go      starts the payment (Stripe Checkout, or the test page)
@@ -18,12 +21,14 @@
 //   POST /v1/admin/devices/<id>/status {status: "paid" | "unpaid" | "removed"}
 //   GET  /v1/admin/installer-logs
 import { hashSecret } from './secrets.js';
+import { createAuth } from './auth.js';
+import { createServices, OutboxMailer } from './services.js';
 import { escapeHtml, html, json, payCode, randomToken, sha256Hex, timingSafeEqual } from './util.js';
 
 const STATUSES = new Set(['unpaid', 'paid', 'removed']);
 const MAX_LOG = 256 * 1024;
 
-export function createApp({ store, signer, payments, adminToken, baseUrl, priceText = '' }) {
+export function createApp({ store, signer, payments, adminToken, baseUrl, priceText = '', ownerPassword = '', mailer = new OutboxMailer(), clock }) {
   const now = () => new Date().toISOString();
 
   async function licenseFor(device) {
@@ -41,12 +46,16 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
     return Boolean(adminToken && m && timingSafeEqual(m[1], adminToken));
   }
 
-  async function setStatus(device, status, by) {
+  async function setStatus(device, status, by, reason = '') {
     device.status = status;
-    device.history = [...(device.history ?? []), { at: now(), status, by }];
+    device.history = [...(device.history ?? []), { at: now(), status, by, ...(reason ? { reason } : {}) }];
     if (status === 'paid' && !device.paidAt) device.paidAt = now();
+    if (status === 'removed') delete device.removedSeenAt;
     await store.putDevice(device);
   }
+
+  const auth = createAuth({ store, baseUrl, ownerPassword });
+  const services = createServices({ store, setStatus, mailer, baseUrl, ...(clock ? { now: clock } : {}) });
 
   const payUrl = (d) => `${baseUrl}/pay/${d.payCode}`;
 
@@ -80,6 +89,8 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
     const device = await deviceFromAuth(request);
     if (!device) return json({ error: 'unknown device' }, 401);
     device.lastSeen = now();
+    // The phone has now been told to remove the filter; the portals show that.
+    if (device.status === 'removed' && !device.removedSeenAt) device.removedSeenAt = now();
     await store.putDevice(device);
     return json({ status: device.status, payCode: device.payCode, payUrl: payUrl(device), license: await licenseFor(device) });
   }
@@ -110,6 +121,17 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
     device.removalCodeHash = await hashSecret(c.code);
     device.lastSeen = now();
     await store.putDevice(device);
+    return json({ ok: true });
+  }
+
+  async function tamper(request) {
+    const device = await deviceFromAuth(request);
+    if (!device) return json({ error: 'unknown device' }, 401);
+    const body = await request.json().catch(() => null);
+    const events = Array.isArray(body?.events) ? body.events.slice(0, 50) : [];
+    if (!events.length) return json({ error: 'no events' }, 400);
+    const kinds = [...new Set(events.map((e) => String(e?.type ?? 'unknown').slice(0, 40)))];
+    await services.addAlert('tamper', device, kinds.join(', '));
     return json({ ok: true });
   }
 
@@ -156,6 +178,10 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
     const text = await request.text();
     if (!text || text.length > MAX_LOG) return json({ error: 'bad log' }, 400);
     await store.addLog({ at: now(), text });
+    if (/RESULT failed/.test(text)) {
+      const why = text.split('\n').find((l) => l.startsWith('ERROR')) ?? 'see the setup log';
+      await services.addAlert('setup_failed', null, why.replace(/^ERROR\s*/, '').slice(0, 200));
+    }
     return json({ ok: true });
   }
 
@@ -168,10 +194,15 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
       if (p === '/v1/activate' && method === 'POST') return activate(request);
       if (p === '/v1/license' && method === 'GET') return license(request);
       if (p === '/v1/customer' && method === 'POST') return customer(request);
+      if (p === '/v1/tamper' && method === 'POST') return tamper(request);
       if (p === '/v1/stripe/webhook' && method === 'POST') return webhook(request);
       if (p === '/v1/installer-logs' && method === 'POST') return installerLog(request);
 
       let m;
+      if ((m = /^\/reset\/([A-Za-z0-9_-]{20,100})$/.exec(p))) {
+        if (method === 'GET') return services.resetPage(m[1]);
+        if (method === 'POST') return services.resetSubmit(m[1], Object.fromEntries(new URLSearchParams(await request.text())));
+      }
       if ((m = /^\/pay\/([A-Z0-9-]{6,20})$/.exec(p)) && method === 'GET') return payPage(m[1], url);
       if ((m = /^\/pay\/([A-Z0-9-]{6,20})\/go$/.exec(p)) && method === 'GET') return payGo(m[1]);
       if ((m = /^\/pay\/([A-Z0-9-]{6,20})\/test$/.exec(p))) {
@@ -201,5 +232,5 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
     }
   }
 
-  return { handle };
+  return { handle, services, auth };
 }
