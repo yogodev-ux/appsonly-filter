@@ -59,6 +59,29 @@
         <activity android:name=".SettingsActivity" android:exported="false" android:label="Settings" />
         <activity android:name=".WifiActivity" android:exported="false" android:label="Wi-Fi" />
 
+        <!-- "Not available" screen; links into the Play Store are sent here. -->
+        <activity
+            android:name=".BlockedActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="market" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="play.google.com" />
+                <data android:host="market.android.com" />
+            </intent-filter>
+        </activity>
+
         <!-- Always-on web filter: carries only DNS lookups and blocks sites not on the allow-list. -->
         <service
             android:name=".FilterVpnService"

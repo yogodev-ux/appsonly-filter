@@ -13,7 +13,10 @@ What it does once locked:
 - Shows a simple home screen with only the allowed apps (and the phone / SMS apps if chosen).
 - Hides every other app with an icon, every browser, and every other home-screen app.
   The system WebView is kept so allowed apps that show web content still work.
-- Suspends the Play Store (customer can't open it) so it can keep **updating allowed apps** in the background.
+- Keeps the Play Store running in the background so it can keep **updating allowed apps**, but
+  the customer can't open it: it is suspended where the phone allows, and otherwise (many phones
+  refuse because the store is the system's app verifier) it has no icon and every link into it
+  (`market://`, `play.google.com`) opens a "not available" screen instead.
 - **Hides the phone's Settings app** and replaces it with our own Settings screen (the "Settings"
   tile). Every control there is done by this app itself, so there are no links into the system:
   Wi-Fi (on/off, network list, connect with password, forget), Bluetooth on/off, volume,
@@ -105,6 +108,8 @@ made Device Owner again and unlocked with the broadcast above (or the phone is f
 
 ## Known limits to check while testing
 
+- The Play Store can still show notifications (e.g. "apps updated"); tapping one may open the
+  store. Please check this on the emulator.
 - **App updates**: no "install apps" block is used. New apps from `adb install` or sideloading are
   blocked (unknown sources), and anything new that the Play Store installs is hidden right away.
   Updates of allowed apps through the (suspended, hidden) Play Store should keep working. To

@@ -123,7 +123,8 @@ class MainActivity : Activity() {
                 append("${chosen.size} app(s) allowed.\n")
                 append("Phone calls: ${if (phone.isChecked) "allowed" else "blocked"}\n")
                 append("Text messages: ${if (sms.isChecked) "allowed" else "blocked"}\n\n")
-                append("All other apps, browsers and app installs will be blocked. ")
+                append("All other apps and browsers will be hidden, and new apps can't be installed. ")
+                append("Allowed apps keep updating automatically. ")
                 append("This can't be changed on the phone.")
             }
             AlertDialog.Builder(this)

@@ -91,13 +91,13 @@ object LockPolicy {
         val toSuspend = mutableListOf<String>()
         for (pkg in targets) {
             if (pkg in visible || pkg in untouchable) continue
-            // The Play Store stays installed and running (suspended, so the customer can't
-            // open it) so it can keep updating the allowed apps in the background.
-            // If a browser is also the WebView provider, suspend it so web content keeps working.
-            if (pkg == AppScanner.PLAY_STORE || pkg == webView) {
-                toSuspend += pkg
-            } else {
-                hide(dpm, admin, pkg)
+            // The Play Store must keep running so it can update the allowed apps, so it is
+            // never hidden (see below). If a browser is also the WebView provider, suspend it
+            // instead of hiding it so web content inside allowed apps keeps working.
+            when (pkg) {
+                AppScanner.PLAY_STORE -> toSuspend += pkg
+                webView -> toSuspend += pkg
+                else -> hide(dpm, admin, pkg)
             }
         }
         if (toSuspend.isNotEmpty()) {
@@ -106,9 +106,20 @@ object LockPolicy {
             } catch (e: Exception) {
                 Log.w(TAG, "suspend failed", e); toSuspend
             }
-            // Couldn't suspend? Hide instead (never the WebView provider).
-            failed.filter { it != webView }.forEach { hide(dpm, admin, it) }
+            // Many phones refuse to suspend the Play Store (it is the system's app verifier).
+            // Then it stays enabled, but it has no icon and every link into it ("market://",
+            // play.google.com) opens our "not available" screen instead. Its internet is
+            // limited to Google/Play addresses by the web filter.
+            if (AppScanner.PLAY_STORE in failed) {
+                Log.i(TAG, "Play Store can't be suspended here; using store guard instead")
+                try {
+                    if (dpm.isApplicationHidden(admin, AppScanner.PLAY_STORE)) {
+                        dpm.setApplicationHidden(admin, AppScanner.PLAY_STORE, false)
+                    }
+                } catch (e: Exception) { Log.w(TAG, "unhide store", e) }
+            }
         }
+        StoreGuard.apply(ctx, dpm, admin)
 
         // 4. Device Owner extras for our own Settings screen and web filter.
         DeviceControls.prepare(ctx)

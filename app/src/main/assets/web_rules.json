@@ -24,7 +24,7 @@
   "apps": {
     "com.whatsapp": ["whatsapp.com", "*.whatsapp.com", "whatsapp.net", "*.whatsapp.net"],
     "com.google.android.gm": ["mail.google.com", "inbox.google.com", "*.googleusercontent.com", "imap.gmail.com", "smtp.gmail.com"],
-    "com.google.android.apps.maps": ["maps.google.com", "*.googleapis.com", "*.gstatic.com", "*.ggpht.com"],
+    "com.google.android.apps.maps": ["maps.google.com", "clients*.google.com", "*.googleapis.com", "*.gstatic.com", "*.ggpht.com"],
     "com.waze": ["waze.com", "*.waze.com"]
   }
 }
