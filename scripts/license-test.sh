@@ -9,14 +9,15 @@ mkdir -p "$OUT/video"
 PKG=com.appsonly.filter
 SUMMARY=${GITHUB_STEP_SUMMARY:-/dev/stdout}
 FAILS=0; RESULTS=""
-sh_() { adb shell "$@" 2>&1 | tr -d '\r'; }
+sh_() { timeout 90 adb shell "$@" 2>&1 | tr -d '\r'; }
 pass() { RESULTS+="| ✅ PASS | $1 |"$'\n'; echo "PASS: $1"; }
 fail() { RESULTS+="| ❌ FAIL | $1 — ${2:-} |"$'\n'; echo "FAIL: $1 -- ${2:-}"; FAILS=$((FAILS+1)); }
 lic() { sh_ am broadcast -n $PKG/.dev.DevLicenseReceiver | grep -o 'data="[^"]*"' | sed 's/^data="//;s/"$//'; }
 hidden() { sh_ dumpsys package "$1" | grep -m1 -o "hidden=[a-z]*"; }
 screen_has() { sh_ uiautomator dump /sdcard/ui.xml >/dev/null; sh_ cat /sdcard/ui.xml | grep -q "$1"; }
-( adb shell screenrecord --bit-rate 2000000 --time-limit 175 /sdcard/license.mp4 >/dev/null 2>&1 ) & REC=$!
-adb logcat -c; adb logcat -v time > "$OUT/logcat.txt" & LOGCAT=$!
+echo "== start $(date +%T)"
+adb shell screenrecord --bit-rate 2000000 --time-limit 175 /sdcard/license.mp4 </dev/null >/dev/null 2>&1 & REC=$!
+adb logcat -c; adb logcat -v time </dev/null > "$OUT/logcat.txt" 2>&1 & LOGCAT=$!
 
 curl -sf $SERVER/health >/dev/null && pass "License server is up" || fail "License server is up"
 
@@ -36,7 +37,7 @@ adb exec-out screencap -p > "$OUT/1-pay-screen.png"
 screen_has "Almost done" && screen_has "$CODE" && pass "Phone shows how to pay, with its code" || fail "Phone shows how to pay, with its code"
 curl -s "$SERVER/pay/$CODE" | grep -q "Pay now" && pass "Payment page opens for that code" || fail "Payment page opens for that code"
 
-echo "== pay (test mode)"
+echo "== pay (test mode) $(date +%T)"
 curl -s -o /dev/null -X POST "$SERVER/pay/$CODE/test"
 curl -s "$SERVER/pay/$CODE" | grep -q "Paid, thank you" && pass "Server records the payment" || fail "Server records the payment"
 # The phone checks every 30 s on the pay screen; wait for that instead of forcing it.
@@ -52,7 +53,7 @@ L=$(lic); echo "license: $L"
 echo "$L" | grep -q "paid=true" && [ "$(hidden $APPOK)" = "hidden=false" ] && pass "Stays unlocked with no server or internet" || fail "Stays unlocked with no server or internet" "$L"
 
 echo "== staff blocks it again (e.g. refund)"
-( cd server && ADMIN_TOKEN=ci-admin DATA_FILE=../$OUT/server-data.json node src/node-server.js >> "../$OUT/server.log" 2>&1 & echo $! > "../$OUT/server.pid" )
+( cd server && ADMIN_TOKEN=ci-admin DATA_FILE=../$OUT/server-data.json nohup node src/node-server.js </dev/null >> "../$OUT/server.log" 2>&1 & echo $! > "../$OUT/server.pid" )
 for i in $(seq 1 20); do curl -sf $SERVER/health >/dev/null && break; sleep 0.5; done
 ID=$(curl -s -H "authorization: Bearer ci-admin" $SERVER/v1/admin/devices | grep -o '"id":"dev_[^"]*"' | head -1 | cut -d'"' -f4)
 curl -s -o /dev/null -X POST -H "authorization: Bearer ci-admin" -H "content-type: application/json" -d '{"status":"unpaid"}' "$SERVER/v1/admin/devices/$ID/status"
@@ -63,7 +64,9 @@ echo "== installer logs reach the server"
 curl -s -o /dev/null -w '%{http_code}' -X POST -H "content-type: text/plain" --data "STEP Checking the phone" $SERVER/v1/installer-logs | grep -q 200 \
   && pass "Server accepts installer logs" || fail "Server accepts installer logs"
 
+echo "== done $(date +%T)"
 sh_ pkill -INT screenrecord >/dev/null; sleep 3; kill $REC $LOGCAT 2>/dev/null
+kill "$(cat "$OUT/server.pid")" 2>/dev/null
 adb pull /sdcard/license.mp4 "$OUT/video/license.mp4" >/dev/null 2>&1 || true
 grep -E "AppsOnlyLicense" "$OUT/logcat.txt" | tail -20
 {
