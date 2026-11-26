@@ -202,7 +202,9 @@ class SetupEngine(
         for (attempt in 1..2) {
             val r = adb.shell("dpm set-device-owner --user 0 ${config.adminComponent}")
             last = r.out
-            log.add("dpm: ${r.out.lines().take(3).joinToString(" / ")}")
+            val summary = r.out.lines().filter { it.isNotBlank() && !it.trimStart().startsWith("at ") }.take(4).joinToString(" / ")
+            log.add("dpm: $summary")
+            if (!r.out.contains("Success")) info("Phone said: $summary")
             if (r.out.contains("Success") || r.out.contains("Active admin set")) return true
             // Android can take a moment to notice the accounts are gone; try once more.
             if (attempt == 1 && r.out.lowercase().contains("account")) sleeper(4000) else break

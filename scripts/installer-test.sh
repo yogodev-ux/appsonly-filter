@@ -21,8 +21,12 @@ sh_ dumpsys account | grep -q "type=com.appsonly.testaccount" && pass "Test phon
 # Without the trick Android refuses Device Owner, so this test really covers it.
 adb install -r -t "$APK" >/dev/null
 D=$(sh_ dpm set-device-owner --user 0 $PKG/.AdminReceiver)
+echo "$D" | grep -v "^\s*at " | head -5
 if echo "$D" | grep -qi "account"; then pass "Plain setup is refused because of the account (as expected)"
-else fail "Plain setup is refused because of the account" "$D"; sh_ dpm remove-active-admin --user 0 $PKG/.AdminReceiver >/dev/null; fi
+else fail "Plain setup is refused because of the account" "$(echo "$D" | head -2)"; fi
+# Start the installer from a clean state: no leftover admin from the attempt above, app removed.
+sh_ dpm remove-active-admin --user 0 $PKG/.AdminReceiver >/dev/null 2>&1
+adb uninstall $PKG >/dev/null 2>&1
 
 echo "== run the installer"
 java -jar "$JAR" --cli --check --adb "$(command -v adb)" --log-dir "$OUT/installer-logs" | tee "$OUT/installer-check.txt"
@@ -41,6 +45,7 @@ LOG=$(ls "$OUT"/installer-logs/setup-*.log 2>/dev/null | tail -1)
 [ -n "$LOG" ] && grep -q "RESULT success" "$LOG" && pass "Setup log saved" || fail "Setup log saved"
 [ -n "$LOG" ] && ! grep -qw tester "$LOG" && pass "Log has no account names" || fail "Log has no account names"
 
+echo "---- setup log ----"; [ -n "$LOG" ] && cat "$LOG"
 echo "== run it again (update)"
 java -jar "$JAR" --cli --yes --apk "$APK" --adb "$(command -v adb)" --log-dir "$OUT/installer-logs" | tee "$OUT/installer-rerun.txt"
 grep -q "already set up" "$OUT/installer-rerun.txt" && grep -q "SETUP OK" "$OUT/installer-rerun.txt" \
