@@ -1,0 +1,17 @@
+{
+  "_comment": "Checked top to bottom; the first match wins. match = manufacturer:model, lower case, * is a wildcard. status: supported | warning | blocked. Anything not listed is allowed with a warning.",
+  "min_sdk": 29,
+  "models": [
+    { "match": "google:sdk_gphone*", "status": "supported", "note": "Android emulator (testing)." },
+    { "match": "google:pixel*", "status": "supported", "note": "" },
+    { "match": "samsung:*", "status": "supported", "note": "If setup is refused, also sign out of the Samsung account." },
+    { "match": "motorola:*", "status": "supported", "note": "" },
+    { "match": "nokia:*", "status": "supported", "note": "" },
+    { "match": "oneplus:*", "status": "warning", "note": "OnePlus: some models need 'Disable permission monitoring' in Developer options." },
+    { "match": "xiaomi:*", "status": "warning", "note": "Xiaomi / Redmi / POCO: turn on 'USB debugging (Security settings)' and 'Install via USB' in Developer options first, and remove the Second space if there is one." },
+    { "match": "redmi:*", "status": "warning", "note": "Xiaomi / Redmi / POCO: turn on 'USB debugging (Security settings)' and 'Install via USB' in Developer options first." },
+    { "match": "poco:*", "status": "warning", "note": "Xiaomi / Redmi / POCO: turn on 'USB debugging (Security settings)' and 'Install via USB' in Developer options first." },
+    { "match": "huawei:*", "status": "blocked", "note": "Newer Huawei phones have no Google Play, so allowed apps could not update." },
+    { "match": "honor:*", "status": "warning", "note": "Some Honor phones have no Google Play." }
+  ]
+}

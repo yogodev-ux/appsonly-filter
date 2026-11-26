@@ -175,3 +175,24 @@ app/src/main/assets/web_rules.json  the allow-lists
   AdminReceiver.kt  Device Owner receiver
 app/src/debug/      developer unlock (debug builds only)
 ```
+
+## Step 3: Windows installer
+
+`installer/` is the PC setup program (Kotlin, its own small build: `./gradlew -p installer test fatJar`).
+CI packages it as `AppsOnlySetup-windows` (artifact of the "Windows installer" workflow): a folder with
+`AppsOnlySetup.exe`, its own Java, `platform-tools` (adb) and `apps-only.apk`. Nothing to install on the PC.
+
+What it does, in order:
+1. Finds exactly one phone with USB debugging allowed (tells the person what to do if not).
+2. Checks Android 10+, the model list (`installer/src/main/resources/supported-models.json`),
+   other management apps, extra users / work profile / second space, and accounts.
+3. Installs the app.
+4. **Account trick:** switches off the apps that own the phone's accounts (for example Google Play
+   services) for a few seconds, so Android allows Device Owner without a factory reset, then switches
+   them straight back on. If setup is interrupted, the next run switches them back on first.
+5. Makes the app Device Owner and opens it; the customer picks the allowed apps on the phone.
+6. Saves a log on the PC (`%LOCALAPPDATA%\AppsOnly\setup-logs`) and uploads it once the server
+   exists (step 4; `log_upload_url` in `installer-config.json`). Logs never contain account names.
+
+Running it on a phone that's already set up just updates the app.
+Command line (used by CI): `java -jar apps-only-setup.jar --cli [--check] [--yes] [--apk FILE] [--adb FILE]`.

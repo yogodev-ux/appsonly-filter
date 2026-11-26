@@ -64,14 +64,14 @@ echo "== setup screen"
 sh_ am start -n $PKG/.MainActivity >/dev/null; sleep 6; shot 00-setup
 sh_ uiautomator dump /sdcard/ui.xml >/dev/null; sh_ cat /sdcard/ui.xml > "$OUT/setup-ui.xml"
 grep -q 'text="Allow phone calls"' "$OUT/setup-ui.xml" && fail "Setup has no separate calls/texts switches" || pass "Setup has no separate calls/texts switches"
-# The list is alphabetical and longer than the screen: scroll down until Phone or Messages shows.
+# The list is alphabetical, so scroll down until Phone or Messages shows up.
 found=0
-for i in $(seq 1 10); do
+for i in 1 2 3 4 5 6; do
   grep -qE 'text="(Phone|Messages)"' "$OUT/setup-ui.xml" && { found=1; break; }
-  sh_ input swipe 540 1700 540 900 400 >/dev/null; sleep 2
+  sh_ input swipe 540 1800 540 700 300 >/dev/null; sleep 1
   sh_ uiautomator dump /sdcard/ui.xml >/dev/null; sh_ cat /sdcard/ui.xml > "$OUT/setup-ui.xml"
 done
-[ $found = 1 ] && pass "Phone/Messages are normal entries in the setup list" || fail "Phone/Messages are normal entries in the setup list" "not found after scrolling the list"
+[ $found = 1 ] && pass "Phone/Messages are normal entries in the setup list" || fail "Phone/Messages are normal entries in the setup list" "not found in the list"
 sh_ input keyevent KEYCODE_BACK >/dev/null
 
 echo "== lock"
