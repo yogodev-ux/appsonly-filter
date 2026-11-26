@@ -38,6 +38,9 @@ class ScreenGuard : AccessibilityService() {
         if (pkg == "com.google.android.gms" && (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) Log.d(TAG, "guard saw $pkg/$cls")
         if (!blocked(this, pkg, cls)) return
         Log.i(TAG, "Screen guard closed $pkg/$cls")
+        // Back first closes the screen itself; Home alone only hides it, and some screens
+        // (Play services' Google Account) come straight back to the front.
+        performGlobalAction(GLOBAL_ACTION_BACK)
         performGlobalAction(GLOBAL_ACTION_HOME)
         logOnce("$pkg/$cls")
     }
