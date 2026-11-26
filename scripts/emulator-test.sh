@@ -21,6 +21,21 @@ check() { # check "name" <command that must succeed>
 shot() { adb exec-out screencap -p > "$OUT/$1.png" 2>/dev/null || true; }
 resumed() { sh_ dumpsys activity activities | grep -m1 -E "mResumedActivity|topResumedActivity" ; }
 home() { sh_ input keyevent KEYCODE_HOME >/dev/null; sleep 2; }
+tap_text() { # tap the first on-screen element whose text starts with $1
+  sh_ uiautomator dump /sdcard/ui.xml >/dev/null
+  local b; b=$(sh_ cat /sdcard/ui.xml | tr '>' '\n' | grep -m1 "text=\"$1" | grep -o 'bounds="[^"]*"' | grep -oE '[0-9]+' | tr '\n' ' ')
+  [ -z "$b" ] && return 1
+  set -- $b
+  sh_ input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )) >/dev/null
+}
+# A slow CI emulator sometimes shows "<app> isn't responding" over everything; press Wait.
+dismiss_anr() {
+  for i in 1 2 3; do
+    sh_ uiautomator dump /sdcard/ui.xml >/dev/null
+    sh_ cat /sdcard/ui.xml | grep -q "isn't responding" || return 0
+    echo "(closing an 'isn't responding' dialog)"; tap_text "Wait" || sh_ input keyevent KEYCODE_BACK >/dev/null; sleep 2
+  done
+}
 
 # Screen recording, in segments (Android stops a recording after 3 minutes).
 REC_N=0
@@ -61,21 +76,25 @@ echo "allowed: $ALLOWED" | tee "$OUT/allowed.txt"
 FIRST_ALLOWED=${ALLOWED%%,*}
 
 echo "== setup screen"
-sh_ am start -n $PKG/.MainActivity >/dev/null; sleep 6; shot 00-setup
+sh_ am start -n $PKG/.MainActivity >/dev/null; sleep 6; dismiss_anr; shot 00-setup
 sh_ uiautomator dump /sdcard/ui.xml >/dev/null; sh_ cat /sdcard/ui.xml > "$OUT/setup-ui.xml"
 grep -q 'text="Allow phone calls"' "$OUT/setup-ui.xml" && fail "Setup has no separate calls/texts switches" || pass "Setup has no separate calls/texts switches"
 # The list is alphabetical, so scroll down until Phone or Messages shows up.
 found=0
 for i in 1 2 3 4 5 6; do
   grep -qE 'text="(Phone|Messages)"' "$OUT/setup-ui.xml" && { found=1; break; }
+  grep -q "isn't responding" "$OUT/setup-ui.xml" && { dismiss_anr; sh_ am start -n $PKG/.MainActivity >/dev/null; sleep 3; }
   sh_ input swipe 540 1800 540 700 300 >/dev/null; sleep 1
   sh_ uiautomator dump /sdcard/ui.xml >/dev/null; sh_ cat /sdcard/ui.xml > "$OUT/setup-ui.xml"
 done
-[ $found = 1 ] && pass "Phone/Messages are normal entries in the setup list" || fail "Phone/Messages are normal entries in the setup list" "not found in the list"
+if [ $found = 1 ]; then pass "Phone/Messages are normal entries in the setup list"; else
+  fail "Phone/Messages are normal entries in the setup list" "not found in the list"
+  echo "---- setup list texts ----"; grep -o 'text="[^"]*"' "$OUT/setup-ui.xml" | sort -u | head -40
+fi
 sh_ input keyevent KEYCODE_BACK >/dev/null
 
 echo "== lock"
-LOCK=$(sh_ am broadcast -n $PKG/.dev.DevLockReceiver --es allowed "$ALLOWED" --ez phone true --es frp 123456789012345678901)
+LOCK=$(sh_ am broadcast -n $PKG/.dev.DevLockReceiver --es allowed "$ALLOWED" --ez phone true --ez paid true --es frp 123456789012345678901)
 echo "$LOCK" > "$OUT/lock.txt"
 echo "$LOCK" | grep -q LOCKED && pass "Locks with allow-list ($ALLOWED)" || fail "Locks with allow-list" "$LOCK"
 sleep 5
@@ -130,13 +149,6 @@ blocked_open "Wi-Fi settings page" -a android.settings.WIFI_SETTINGS
 blocked_open "Play Store main screen" -n com.android.vending/com.google.android.finsky.activities.MainActivity
 
 echo "== our own screens open"
-tap_text() { # tap the first on-screen element whose text starts with $1
-  sh_ uiautomator dump /sdcard/ui.xml >/dev/null
-  local b; b=$(sh_ cat /sdcard/ui.xml | tr '>' '\n' | grep -m1 "text=\"$1" | grep -o 'bounds="[^"]*"' | grep -oE '[0-9]+' | tr '\n' ' ')
-  [ -z "$b" ] && return 1
-  set -- $b
-  sh_ input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )) >/dev/null
-}
 home
 tap_text "Settings"; sleep 3; shot 02-settings
 resumed | grep -q "$PKG/.SettingsActivity" && pass "Our Settings screen opens" || fail "Our Settings screen opens" "$(resumed)"
