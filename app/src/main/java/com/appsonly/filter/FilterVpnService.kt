@@ -115,7 +115,7 @@ class FilterVpnService : VpnService() {
     }
 
     /** Real DNS servers of the underlying (non-VPN) network. */
-    private fun upstream(): Pair<Network?, List<InetAddress>> {
+    private fun upstream(): Pair<Network?, List<InetAddress>> { // network is informational only
         val cm = getSystemService(ConnectivityManager::class.java)
         @Suppress("DEPRECATION")
         for (net in cm.allNetworks) {
@@ -133,8 +133,9 @@ class FilterVpnService : VpnService() {
         for (server in servers + FALLBACK_DNS.map { InetAddress.getByName(it) }) {
             try {
                 DatagramSocket().use { s ->
+                    // protect() sends this socket around our own filter. (Binding it to a
+                    // network instead fails with EPERM while the VPN is up.)
                     protect(s)
-                    net?.bindSocket(s)
                     s.soTimeout = 4000
                     s.send(DatagramPacket(query, query.size, server, 53))
                     val buf = ByteArray(4096)
