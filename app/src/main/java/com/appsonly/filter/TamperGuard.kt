@@ -120,6 +120,7 @@ class WatchdogJob : JobService() {
     override fun onStartJob(params: JobParameters): Boolean {
         Thread {
             try {
+                if (Prefs.load(applicationContext).locked) License.refresh(applicationContext)
                 LockPolicy.enforce(applicationContext)
             } finally {
                 jobFinished(params, false)

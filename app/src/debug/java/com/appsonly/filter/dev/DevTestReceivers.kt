@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.appsonly.filter.AdminReceiver
+import com.appsonly.filter.License
 import com.appsonly.filter.LockPolicy
 import com.appsonly.filter.TamperGuard
 import com.appsonly.filter.TamperLog
@@ -24,6 +25,8 @@ class DevLockReceiver : BroadcastReceiver() {
         val ctx = context.applicationContext
         val allowed = intent.getStringExtra("allowed").orEmpty()
             .split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        // --ez paid true skips the payment gate (step 4) for tests of the lock itself.
+        License.devSetPaid(ctx, intent.getBooleanExtra("paid", false))
         Prefs.saveLocked(ctx, allowed, intent.getBooleanExtra("phone", false), intent.getBooleanExtra("sms", false))
         val pending = goAsync()
         Thread {

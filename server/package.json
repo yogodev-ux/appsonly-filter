@@ -1,0 +1,13 @@
+{
+  "name": "apps-only-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "License and payment server for Apps Only. No dependencies; runs on Node 18+ and is written against the Web Fetch API so it can move to Cloudflare Workers or Firebase later.",
+  "scripts": {
+    "start": "node src/node-server.js",
+    "test": "node --test test/*.test.js",
+    "keys": "node scripts/gen-keys.js"
+  },
+  "engines": { "node": ">=18" }
+}
