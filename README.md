@@ -260,3 +260,10 @@ Plan: see the "Portals plan" doc. Part 1 is done here:
   phone code to confirm), and send a code-reset email. Staff accounts: add, turn off, new password.
 - Pages are plain server-rendered HTML with no scripts, a strict content policy, and same-site checks
   on every form.
+
+## Portals, part 4: staff portal
+
+- A separate, simple website for support staff at `/staff` (own look, one column, works on a phone).
+- Find a customer by name, phone number or email; open them; remove the filter **only with the
+  customer's removal code** (plus a reason), or email the customer a link to choose a new code.
+- Staff can't mark paid, unlock, remove without the code, or see sales, staff accounts or logs.
