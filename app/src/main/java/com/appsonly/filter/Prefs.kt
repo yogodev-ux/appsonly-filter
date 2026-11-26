@@ -53,6 +53,12 @@ object Prefs {
         return token
     }
 
+    private const val KEY_LOCKED_ONCE = "locked_once"
+
+    /** True after the first full lock run (so later hides count as tamper events). */
+    fun lockedOnce(ctx: Context) = sp(ctx).getBoolean(KEY_LOCKED_ONCE, false)
+    fun markLockedOnce(ctx: Context) { if (!lockedOnce(ctx)) sp(ctx).edit().putBoolean(KEY_LOCKED_ONCE, true).apply() }
+
     fun clear(ctx: Context) {
         sp(ctx).edit().clear().commit()
     }

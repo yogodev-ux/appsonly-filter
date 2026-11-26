@@ -105,14 +105,23 @@ object AppScanner {
         CORE + keyboards(ctx) + setOfNotNull(webViewPackage()?.takeIf { it !in browsers(ctx) }) +
             ctx.packageName
 
+    fun defaultDialer(ctx: Context): String? =
+        ctx.getSystemService(TelecomManager::class.java)?.defaultDialerPackage
+
+    fun defaultSms(ctx: Context): String? = Telephony.Sms.getDefaultSmsPackage(ctx)
+
     /**
-     * Apps the customer may pick during setup. Browsers, the store, settings, installers,
-     * launchers and the phone/SMS apps (those have their own switches) are left out.
+     * Apps the customer may pick during setup. Browsers, the store, settings, installers and
+     * launchers are left out. The phone and messages apps appear as normal entries; picking
+     * them also brings what they need (contacts, call screen) behind the scenes, see
+     * [LockPolicy.visiblePackages]. Other phone/SMS helpers (e.g. Contacts) aren't listed.
      */
     fun pickable(ctx: Context): List<AppEntry> {
+        val launchable = launchable(ctx)
         val excluded = browsers(ctx) + homeApps(ctx) + installers(ctx) + phonePackages(ctx) +
             smsPackages(ctx) + untouchable(ctx) + PLAY_STORE + settingsPackage(ctx)
-        return (launchable(ctx) - excluded).map { AppEntry.of(ctx, it) }
+        val phoneAndSms = setOfNotNull(defaultDialer(ctx), defaultSms(ctx)).filter { it in launchable }
+        return ((launchable - excluded) + phoneAndSms).map { AppEntry.of(ctx, it) }
             .sortedBy { it.label.lowercase() }
     }
 }

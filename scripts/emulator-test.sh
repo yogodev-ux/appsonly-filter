@@ -60,8 +60,15 @@ done
 echo "allowed: $ALLOWED" | tee "$OUT/allowed.txt"
 FIRST_ALLOWED=${ALLOWED%%,*}
 
+echo "== setup screen"
+sh_ am start -n $PKG/.MainActivity >/dev/null; sleep 6; shot 00-setup
+sh_ uiautomator dump /sdcard/ui.xml >/dev/null; sh_ cat /sdcard/ui.xml > "$OUT/setup-ui.xml"
+grep -q 'text="Allow phone calls"' "$OUT/setup-ui.xml" && fail "Setup has no separate calls/texts switches" || pass "Setup has no separate calls/texts switches"
+grep -qE 'text="(Phone|Messages)"' "$OUT/setup-ui.xml" && pass "Phone/Messages are normal entries in the setup list" || fail "Phone/Messages are normal entries in the setup list" "not visible on the first screen"
+sh_ input keyevent KEYCODE_BACK >/dev/null
+
 echo "== lock"
-LOCK=$(sh_ am broadcast -n $PKG/.dev.DevLockReceiver --es allowed "$ALLOWED" --ez phone true)
+LOCK=$(sh_ am broadcast -n $PKG/.dev.DevLockReceiver --es allowed "$ALLOWED" --ez phone true --es frp 123456789012345678901)
 echo "$LOCK" > "$OUT/lock.txt"
 echo "$LOCK" | grep -q LOCKED && pass "Locks with allow-list ($ALLOWED)" || fail "Locks with allow-list" "$LOCK"
 sleep 5
@@ -160,10 +167,66 @@ sleep 20 # let background apps make some lookups
 AFTER=$(grep -c "using store guard" "$OUT/logcat.txt")
 [ $((AFTER-BEFORE)) -le 2 ] && pass "Lock check isn't running in a loop (battery)" || fail "Lock check isn't running in a loop (battery)" "$((AFTER-BEFORE)) runs in 20s"
 grep "BLOCKED" "$OUT/logcat.txt" | sed 's/.*BLOCKED/BLOCKED/' | sort | uniq -c | sort -rn > "$OUT/blocked-lookups.txt" || true
-echo "---- web filter log (first 80 lines) ----"
-grep -E "AppsOnlyFilter|AppsOnly" "$OUT/logcat.txt" | head -80
+echo "---- app log (errors and tamper events) ----"
+grep -E "AppsOnlyTamper|W/AppsOnly|E/AppsOnly|FRP" "$OUT/logcat.txt" | grep -v "could not hide" | head -40
 echo "---- blocked lookups ----"
 head -40 "$OUT/blocked-lookups.txt"
+
+
+echo "== step 2: tamper protection"
+tamperlog() { sh_ am broadcast -n $PKG/.dev.DevTamperLogReceiver | tr -d '\r'; }
+sh_ dumpsys device_policy > "$OUT/dumpsys-device-policy.txt"
+STATUS=$(sh_ am broadcast -n $PKG/.dev.DevStatusReceiver | tr -d '\r' | grep -o 'user_control_disabled=[^"]*')
+echo "$STATUS"
+echo "$STATUS" | grep -q "$PKG" \
+  && pass "App can't be force-stopped or cleared by the user" || fail "App can't be force-stopped or cleared by the user" "$STATUS"
+[ "$(sh_ settings get global auto_time)" = "1" ] && pass "Automatic date/time on" || fail "Automatic date/time on" "$(sh_ settings get global auto_time)"
+if grep -q "FRP set" "$OUT/logcat.txt"; then pass "Factory Reset Protection can be set (test account ID)"
+elif grep -q "FRP not supported" "$OUT/logcat.txt"; then pass "Factory Reset Protection: not supported on this emulator (needs a real phone)"
+else fail "Factory Reset Protection" "no FRP result in log"; fi
+
+# Tamper: try to turn automatic time off -> Android refuses (date/time settings are locked).
+sh_ settings put global auto_time 0 >/dev/null 2>&1
+sleep 2
+[ "$(sh_ settings get global auto_time)" = "1" ] && pass "Automatic time can't be turned off" || fail "Automatic time can't be turned off" "$(sh_ settings get global auto_time)"
+
+# Tamper: try to leave kiosk mode. Either Android refuses, or it is logged and Home brings it back.
+kiosk_state() { sh_ dumpsys activity activities | grep -m1 -i mLockTaskModeState | tr -d '\r'; }
+sh_ am task lock stop >/dev/null 2>&1; sleep 2
+if kiosk_state | grep -q LOCKED; then
+  pass "Kiosk mode can't be switched off (refused)"
+else
+  home; sleep 3
+  tamperlog | grep -q kiosk_mode_exited && pass "Tamper log: leaving kiosk mode recorded" || fail "Tamper log: leaving kiosk mode recorded" "$(tamperlog)"
+fi
+home; sleep 3
+kiosk_state | grep -q LOCKED && pass "Kiosk mode on after Home" || fail "Kiosk mode on after Home" "$(kiosk_state)"
+
+# Tamper: force-stop the app. Android should refuse (user control disabled). If it is
+# stopped anyway, the app, the lock and the web filter must come back as soon as Home is used.
+PID_BEFORE=$(sh_ pidof $PKG | tr -d '\r')
+STARTS_BEFORE=$(grep -c "Web filter started" "$OUT/logcat.txt")
+sh_ am force-stop $PKG; sleep 3
+PID_AFTER=$(sh_ pidof $PKG | tr -d '\r')
+echo "pid before force-stop: $PID_BEFORE, after: $PID_AFTER"
+if [ -n "$PID_BEFORE" ] && [ "$PID_BEFORE" = "$PID_AFTER" ]; then
+  pass "Force-stop is refused (app keeps running)"
+  sh_ dumpsys activity services $PKG/.FilterVpnService | grep -q ServiceRecord && pass "Web filter still running after force-stop attempt" || fail "Web filter still running after force-stop attempt"
+else
+  home
+  ok=0
+  for i in $(seq 1 15); do
+    sleep 2
+    [ "$(grep -c "Web filter started" "$OUT/logcat.txt")" -gt "$STARTS_BEFORE" ] && { ok=1; break; }
+  done
+  [ $ok = 1 ] && pass "Web filter comes back after the app is killed" || fail "Web filter comes back after the app is killed"
+  tamperlog | grep -qE "app_force_stopped|app_stopped_by_user" && pass "Tamper log: force-stop recorded" || fail "Tamper log: force-stop recorded" "$(tamperlog)"
+fi
+home; sleep 3
+resumed | grep -q "$PKG" && pass "Home screen back after force-stop attempt" || fail "Home screen back after force-stop attempt" "$(resumed)"
+echo "---- tamper events in the app log ----"
+grep -E "AppsOnlyTamper|W/AppsOnly|E/AppsOnly" "$OUT/logcat.txt" | grep -v "could not hide" | tail -30
+tamperlog > "$OUT/tamper-log.txt"
 
 echo "== reboot keeps the lock"
 stop_rec
