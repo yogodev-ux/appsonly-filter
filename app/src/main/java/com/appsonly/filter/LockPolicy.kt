@@ -55,6 +55,8 @@ object LockPolicy {
 
     /** Packages the customer can see and use once locked. */
     fun visiblePackages(ctx: Context, cfg: LockConfig): Set<String> {
+        // Payment gate (step 4): nothing opens until the phone is paid.
+        if (cfg.locked && !License.isPaid(ctx)) return emptySet()
         val result = cfg.allowedPackages.toMutableSet()
         if (cfg.allowPhone) result += AppScanner.phonePackages(ctx)
         if (cfg.allowSms) result += AppScanner.smsPackages(ctx)

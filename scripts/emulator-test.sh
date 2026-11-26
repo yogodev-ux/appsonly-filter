@@ -75,7 +75,7 @@ done
 sh_ input keyevent KEYCODE_BACK >/dev/null
 
 echo "== lock"
-LOCK=$(sh_ am broadcast -n $PKG/.dev.DevLockReceiver --es allowed "$ALLOWED" --ez phone true --es frp 123456789012345678901)
+LOCK=$(sh_ am broadcast -n $PKG/.dev.DevLockReceiver --es allowed "$ALLOWED" --ez phone true --ez paid true --es frp 123456789012345678901)
 echo "$LOCK" > "$OUT/lock.txt"
 echo "$LOCK" | grep -q LOCKED && pass "Locks with allow-list ($ALLOWED)" || fail "Locks with allow-list" "$LOCK"
 sleep 5
