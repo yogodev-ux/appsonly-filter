@@ -20,14 +20,14 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ProgressBar
-import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 
 /**
  * One screen, three states:
  *  - not Device Owner yet  -> shows the adb command to run
- *  - Device Owner, not locked -> first-run setup (pick allowed apps, phone, SMS)
+ *  - Device Owner, not locked -> first-run setup (pick allowed apps; Phone and Messages are
+ *    normal entries in the list)
  *  - locked -> the home screen with only the allowed apps
  */
 class MainActivity : Activity() {
@@ -95,10 +95,6 @@ class MainActivity : Activity() {
         col.addView(text("Choose allowed apps", 22f, bold = true))
         col.addView(text("Only these apps will be usable. After you lock, this list can't be changed on the phone."))
 
-        val phone = Switch(this).apply { text = "Allow phone calls"; textSize = 16f }
-        val sms = Switch(this).apply { text = "Allow text messages"; textSize = 16f }
-        col.addView(phone)
-        col.addView(sms)
 
         val loading = ProgressBar(this)
         col.addView(loading)
@@ -120,10 +116,13 @@ class MainActivity : Activity() {
         }
 
         lock.setOnClickListener {
+            // Picking the phone / messages app is what allows calls / texts.
+            val allowPhone = AppScanner.defaultDialer(this)?.let { it in chosen } == true
+            val allowSms = AppScanner.defaultSms(this)?.let { it in chosen } == true
             val summary = buildString {
                 append("${chosen.size} app(s) allowed.\n")
-                append("Phone calls: ${if (phone.isChecked) "allowed" else "blocked"}\n")
-                append("Text messages: ${if (sms.isChecked) "allowed" else "blocked"}\n\n")
+                append("Phone calls: ${if (allowPhone) "allowed" else "blocked"}\n")
+                append("Text messages: ${if (allowSms) "allowed" else "blocked"}\n\n")
                 append("All other apps and browsers will be hidden, and new apps can't be installed. ")
                 append("Allowed apps keep updating automatically. ")
                 append("This can't be changed on the phone.")
@@ -133,7 +132,7 @@ class MainActivity : Activity() {
                 .setMessage(summary)
                 .setNegativeButton("Go back", null)
                 .setPositiveButton("Lock") { _, _ ->
-                    Prefs.saveLocked(this, chosen.toSet(), phone.isChecked, sms.isChecked)
+                    Prefs.saveLocked(this, chosen.toSet(), allowPhone, allowSms)
                     setContentView(column().apply { addView(text("Locking…", 20f, bold = true)); addView(ProgressBar(this@MainActivity)) })
                     app.enforceAsync { runOnUiThread { render() } }
                 }

@@ -60,6 +60,13 @@ done
 echo "allowed: $ALLOWED" | tee "$OUT/allowed.txt"
 FIRST_ALLOWED=${ALLOWED%%,*}
 
+echo "== setup screen"
+sh_ am start -n $PKG/.MainActivity >/dev/null; sleep 6; shot 00-setup
+sh_ uiautomator dump /sdcard/ui.xml >/dev/null; sh_ cat /sdcard/ui.xml > "$OUT/setup-ui.xml"
+grep -q 'text="Allow phone calls"' "$OUT/setup-ui.xml" && fail "Setup has no separate calls/texts switches" || pass "Setup has no separate calls/texts switches"
+grep -q 'text="Phone"' "$OUT/setup-ui.xml" && pass "Phone app is a normal entry in the setup list" || fail "Phone app is a normal entry in the setup list"
+sh_ input keyevent KEYCODE_BACK >/dev/null
+
 echo "== lock"
 LOCK=$(sh_ am broadcast -n $PKG/.dev.DevLockReceiver --es allowed "$ALLOWED" --ez phone true --es frp 123456789012345678901)
 echo "$LOCK" > "$OUT/lock.txt"
