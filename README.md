@@ -250,3 +250,13 @@ Plan: see the "Portals plan" doc. Part 1 is done here:
   to choose a new removal code. Emails are only queued in the log until an email service is picked.
 - Alerts for the owner: tamper reports from the phone (`POST /v1/tamper`), failed setups (from the
   installer log), phones unpaid for 3 days, too many wrong removal codes, and code resets.
+
+## Portals, part 3: owner portal
+
+- One sign-in page at `/login` for everyone. The owner lands in the owner portal (`/owner`), staff
+  in the staff portal (`/staff`, built in part 4); neither can open the other's pages.
+- The owner portal opens on **Alerts that need you**, with Sales, Customers, Staff, Setup logs and
+  Action log one tap away. On a customer: mark paid, lock again, remove without the code (type the
+  phone code to confirm), and send a code-reset email. Staff accounts: add, turn off, new password.
+- Pages are plain server-rendered HTML with no scripts, a strict content policy, and same-site checks
+  on every form.

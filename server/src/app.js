@@ -7,6 +7,8 @@
 //                            the details the customer typed in the Windows installer; the removal
 //                            code is stored only as a hash
 //   POST /v1/tamper          Bearer <token> {events: [{type, detail}]}  -> alerts for the owner
+// Owner and staff (web pages, one sign-in; see web.js, owner.js, staff.js):
+//   GET/POST /login   POST /logout   /owner/...  (owner portal)   /staff/...  (staff portal)
 // Customer (from the reset email):
 //   GET/POST /reset/<token>  choose a new removal code
 // Customer (any browser, e.g. on a PC, since the phone can't browse):
@@ -23,6 +25,9 @@
 import { hashSecret } from './secrets.js';
 import { createAuth } from './auth.js';
 import { createServices, OutboxMailer } from './services.js';
+import { createWeb } from './web.js';
+import { createOwnerPortal } from './owner.js';
+import { createStaffPortal } from './staff.js';
 import { escapeHtml, html, json, payCode, randomToken, sha256Hex, timingSafeEqual } from './util.js';
 
 const STATUSES = new Set(['unpaid', 'paid', 'removed']);
@@ -56,6 +61,12 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
 
   const auth = createAuth({ store, baseUrl, ownerPassword });
   const services = createServices({ store, setStatus, mailer, baseUrl, ...(clock ? { now: clock } : {}) });
+
+  const web = createWeb({
+    auth,
+    owner: createOwnerPortal({ store, services, ...(clock ? { now: clock } : {}) }),
+    staff: createStaffPortal({ store, services }),
+  });
 
   const payUrl = (d) => `${baseUrl}/pay/${d.payCode}`;
 
@@ -197,6 +208,9 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
       if (p === '/v1/tamper' && method === 'POST') return tamper(request);
       if (p === '/v1/stripe/webhook' && method === 'POST') return webhook(request);
       if (p === '/v1/installer-logs' && method === 'POST') return installerLog(request);
+
+      const page = await web.handle(request, url);
+      if (page) return page;
 
       let m;
       if ((m = /^\/reset\/([A-Za-z0-9_-]{20,100})$/.exec(p))) {
