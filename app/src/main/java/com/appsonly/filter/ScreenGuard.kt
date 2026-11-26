@@ -36,14 +36,30 @@ class ScreenGuard : AccessibilityService() {
             return
         }
         if (pkg == "com.google.android.gms" && (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) Log.d(TAG, "guard saw $pkg/$cls")
-        if (!blocked(this, pkg, cls)) return
+        if (!blocked(this, pkg, cls)) {
+            // A pop-up of the blocked app itself doesn't count as being back somewhere allowed.
+            if (pkg != blockedPkg) lastAllowedAt = SystemClock.elapsedRealtime()
+            return
+        }
         Log.i(TAG, "Screen guard closed $pkg/$cls")
-        // Back first closes the screen itself; Home alone only hides it, and some screens
-        // (Play services' Google Account) come straight back to the front.
+        // Back closes the screen itself (Home alone only hides it, and it comes back when
+        // the app is opened again). If Back shows another blocked screen, that one is
+        // closed the same way, so a pile of them is cleared. If nothing allowed shows up
+        // shortly after (the screen ignored Back), go Home.
+        val at = SystemClock.elapsedRealtime()
         performGlobalAction(GLOBAL_ACTION_BACK)
-        performGlobalAction(GLOBAL_ACTION_HOME)
+        main.removeCallbacks(homeIfStuck)
+        blockedAt = at
+        blockedPkg = pkg
+        main.postDelayed(homeIfStuck, 700)
         logOnce("$pkg/$cls")
     }
+
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    @Volatile private var lastAllowedAt = 0L
+    @Volatile private var blockedAt = 0L
+    @Volatile private var blockedPkg = ""
+    private val homeIfStuck = Runnable { if (lastAllowedAt < blockedAt) performGlobalAction(GLOBAL_ACTION_HOME) }
 
     override fun onInterrupt() {}
 
