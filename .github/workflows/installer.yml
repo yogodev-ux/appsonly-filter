@@ -21,6 +21,26 @@ jobs:
         run: ./gradlew --no-daemon -p installer test fatJar
       - name: Build app and test-account APKs
         run: ./gradlew --no-daemon :app:assembleDebug :testapps:fakeaccount:assembleDebug
+      # The app customers get: a release build signed with the real key. The key and the
+      # license settings live only in the repository's secrets, never in the code. Without
+      # them (forks, or before the key exists) no customer installer is made.
+      - name: Build release app (only when the release secrets exist)
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          LICENSE_PUBLIC_KEY: ${{ secrets.LICENSE_PUBLIC_KEY }}
+          LICENSE_SERVER: ${{ secrets.LICENSE_SERVER }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$LICENSE_PUBLIC_KEY" ] || [ -z "$LICENSE_SERVER" ]; then
+            echo "No release secrets: skipping the customer build (the test build is still tested)."
+            exit 0
+          fi
+          export RELEASE_KEYSTORE_FILE="$RUNNER_TEMP/release.keystore"
+          echo "$KEYSTORE_B64" | base64 -d > "$RELEASE_KEYSTORE_FILE"
+          ./gradlew --no-daemon :app:assembleRelease -PlicensePublicKey="$LICENSE_PUBLIC_KEY" -PlicenseServer="$LICENSE_SERVER"
+          rm -f "$RELEASE_KEYSTORE_FILE"
       - uses: actions/upload-artifact@v4
         with:
           name: installer-inputs
@@ -28,6 +48,8 @@ jobs:
             installer/build/libs/apps-only-setup.jar
             app/build/outputs/apk/debug/app-debug.apk
             testapps/fakeaccount/build/outputs/apk/debug/fakeaccount-debug.apk
+            app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: warn
 
   # The setup engine against a real (emulated) phone that already has an account.
   emulator:
@@ -95,7 +117,15 @@ jobs:
             --add-launcher AppsOnlySetupCli=cli.properties
           Invoke-WebRequest https://dl.google.com/android/repository/platform-tools-latest-windows.zip -OutFile pt.zip
           Expand-Archive pt.zip -DestinationPath dist/AppsOnlySetup
-          Copy-Item inputs/app/build/outputs/apk/debug/app-debug.apk dist/AppsOnlySetup/apps-only.apk
+          # Only the signed release app ever goes in the customer installer. The test build
+          # has developer controls and can be unlocked from a computer.
+          $release = "inputs/app/build/outputs/apk/release/app-release.apk"
+          if (Test-Path $release) {
+            Copy-Item $release dist/AppsOnlySetup/apps-only.apk
+            "HAS_APP=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          } else {
+            Write-Output "No signed release app (release secrets not set): the package is tested but not uploaded."
+          }
           Get-ChildItem dist/AppsOnlySetup
       - name: Smoke test (no phone connected)
         shell: pwsh
@@ -107,6 +137,7 @@ jobs:
           # --check exits 1 when no phone is connected; that is the expected result here.
           $global:LASTEXITCODE = 0
       - uses: actions/upload-artifact@v4
+        if: env.HAS_APP == '1'
         with:
           name: AppsOnlySetup-windows
           path: dist/
