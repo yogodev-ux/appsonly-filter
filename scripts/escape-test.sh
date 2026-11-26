@@ -267,6 +267,19 @@ while read -r cmp; do
   fi
 done < "$OUT/all-main-activities.txt"
 info "Sweep tried $SWEPT screens of non-allowed packages"
+# A screen we know the guard must close: a phone-service settings screen opened from
+# inside the allowed app (the phone service itself is allowed, its settings are not).
+PHONE_SET=$(sh_ dumpsys package com.android.phone | grep -oE 'com\.android\.phone/[A-Za-z0-9_.$]*(RadioInfo|CallFeaturesSetting|NetworkSetting)[A-Za-z0-9_.$]*' | head -1)
+if [ -n "$PHONE_SET" ]; then
+  home; sh_ am start -S -W -n $PROBE/.Probe --es cmp "$PHONE_SET" >/dev/null; sleep 6
+  top=$(resumed)
+  echo "$top" | grep -qE "RadioInfo|CallFeaturesSetting|NetworkSetting" \
+    && fail "Guard closes phone settings opened from an allowed app ($PHONE_SET)" "still open: $top" \
+    || pass "Guard closes phone settings opened from an allowed app ($PHONE_SET)"
+  home
+else
+  info "No phone settings screen found to test the guard with"
+fi
 TL=$(sh_ am broadcast -n $PKG/.dev.DevTamperLogReceiver)
 echo "$TL" | grep -q screen_blocked && pass "Tamper log records screens the guard closed" || fail "Tamper log records screens the guard closed" "$(echo "$TL" | tail -c 300)"
 grep "Screen guard closed" "$OUT/logcat.txt" | sed 's/.*Screen guard closed //' | sort | uniq -c | sort -rn > "$OUT/guard-closed.txt"
