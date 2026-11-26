@@ -246,7 +246,10 @@ open_signin() { # from home: Settings -> "Add Google account" (scrolls down to f
   return 1
 }
 ours() { resumed | grep -q "$PKG"; }
-if ! open_signin; then
+open_signin; SIGNIN_FOUND=$?
+echo "top after tapping Add Google account: $(resumed)"
+grep -E "Google sign-in|AccountManager|E/AppsOnly|W/AppsOnly" "$OUT/logcat.txt" | grep -v "could not hide" | tail -15
+if [ $SIGNIN_FOUND != 0 ]; then
   fail "Add Google account button found" "not on Settings screen"
 elif ours; then
   # Google closed its page by itself (e.g. no internet): we must be back on our screen.
