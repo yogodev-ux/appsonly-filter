@@ -262,6 +262,36 @@ probe "Google Help (Play services, shows web pages)" --es cmp com.google.android
 probe "Share sheet" --es action android.intent.action.SEND --es type text/plain
 probe "File picker" --es action android.intent.action.GET_CONTENT --es type "*/*"
 
+# ------------------------------------------------------------------ 4a. app website scan
+echo "== app website scan: the filter reads an allowed app's install files for the sites it needs"
+scan() { sh_ am broadcast -n $PKG/.dev.DevScanReceiver --es pkg "$1" | grep -o 'data=".*"' | sed 's/^data="//; s/"$//'; }
+verdict() { sh_ am broadcast -n $PKG/.dev.DevCheckReceiver --es pkg "$1" --es host "$2" | grep -o 'data="[A-Z]*"' | tr -d '"' | cut -d= -f2; }
+expect_site() { # pkg host ALLOWED|BLOCKED why
+  local v; v=$(verdict "$1" "$2")
+  [ "$v" = "$3" ] && pass "App scan: $2 is $3 ($4)" || fail "App scan: $2 should be $3 ($4)" "got '$v'"
+}
+S=$(scan $PROBE); echo "probe scan: $S"
+case "$S" in *appsonlyprobe.com*) pass "App scan finds the test app's own domain ($S)";; *) fail "App scan finds the test app's own domain" "$S";; esac
+expect_site $PROBE api.appsonlyprobe.com ALLOWED "own domain, in the code"
+expect_site $PROBE chat.appsonlyprobe.com ALLOWED "own domain, a sub-address not in the code"
+expect_site $PROBE d1x2y3z4.cloudfront.net ALLOWED "delivery network name in the code"
+expect_site $PROBE zz9other.cloudfront.net BLOCKED "same network, name not in the app"
+expect_site $PROBE telemetry.probevendor-metrics.io ALLOWED "service name without https:// in the code"
+expect_site $PROBE help.resource-only-host.net ALLOWED "only in a resource file"
+expect_site $PROBE live.asset-only-host.com ALLOWED "only in an asset file"
+expect_site $PROBE graph.facebook.com ALLOWED "Facebook's app service, not a web page"
+expect_site $PROBE www.facebook.com BLOCKED "general website found in the app"
+expect_site $PROBE en.wikipedia.org BLOCKED "general website found in the app"
+expect_site $PROBE www.cnn.com BLOCKED "general website not in the app"
+expect_site $PROBE random-unrelated-site.com BLOCKED "not in the app"
+# Real apps on the emulator: the scan must finish and give a result.
+for p in ${ALLOWED//,/ }; do
+  [ "$p" = "$PROBE" ] && continue
+  S=$(scan "$p"); echo "scan $p: $S"
+  [ -n "$S" ] && [ "$S" != "none" ] && pass "App scan works on $p (${S:0:120})" || fail "App scan works on $p" "$S"
+done
+adb logcat -d | grep " SCAN " | cut -c1-400 | tail -12
+
 # ------------------------------------------------------------------ 4b. getting around the web filter
 echo "== web filter: proxies and direct addresses, from inside an allowed app"
 # The filter checks names. These try to reach the internet without a name lookup the filter

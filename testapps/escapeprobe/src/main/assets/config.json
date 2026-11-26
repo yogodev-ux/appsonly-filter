@@ -1,0 +1,2 @@
+{"_test": "TEST ONLY: a web address that exists only in this asset file (for the app scan test).",
+ "live": "wss://live.asset-only-host.com/socket"}

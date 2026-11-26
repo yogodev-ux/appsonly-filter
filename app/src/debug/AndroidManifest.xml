@@ -23,6 +23,10 @@
             android:exported="true"
             android:permission="android.permission.DUMP" />
         <receiver
+            android:name=".dev.DevScanReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+        <receiver
             android:name=".dev.DevCheckReceiver"
             android:exported="true"
             android:permission="android.permission.DUMP" />
