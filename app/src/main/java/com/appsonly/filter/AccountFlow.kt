@@ -24,9 +24,8 @@ import android.widget.Toast
  * Google's sign-in can end on a page with no buttons (for example "Couldn't sign in" when
  * there is no internet). So there is always a way back to our screens:
  *  - a notification "Back to home" for the whole time the sign-in is open,
- *  - when Google reports the sign-in finished or failed, we come back to the front ourselves,
- *  - after [timeoutMs] we close the sign-in window and come back on our own,
- *  - the Home button works in kiosk mode and also ends the sign-in.
+ *  - Google's sign-in opens in its own task, so Home always shows our home screen (and ends it),
+ *  - after [timeoutMs] we close the sign-in window and come back on our own.
  */
 object AccountFlow {
     const val GOOGLE = "com.google"
@@ -44,6 +43,7 @@ object AccountFlow {
 
     private val main = Handler(Looper.getMainLooper())
     private var appCtx: Context? = null
+    private var accountsBefore = 0
     private val timeout = Runnable {
         val ctx = appCtx ?: return@Runnable
         if (!active) return@Runnable
@@ -53,25 +53,40 @@ object AccountFlow {
         returnToUs(ctx)
     }
 
-    fun addGoogleAccount(activity: Activity, done: (added: Boolean) -> Unit) {
+    fun addGoogleAccount(activity: Activity, failed: () -> Unit) {
         val ctx = activity.applicationContext
         appCtx = ctx
         active = true
+        accountsBefore = googleAccountNames(ctx).size
         setAllowed(activity, true)
         showBackNotification(ctx)
         main.removeCallbacks(timeout)
         main.postDelayed(timeout, timeoutMs)
-        Log.i(TAG, "Google sign-in opened")
+        // We ask for Google's sign-in screen and open it ourselves in its OWN task. If Android
+        // opened it on top of our home screen (same task), the Home button would just show
+        // Google's page again, and the customer would have no way out.
         AccountManager.get(activity).addAccount(
-            GOOGLE, null, null, null, activity,
+            GOOGLE, null, null, null, null,
             { future ->
-                val added = try { future.result != null } catch (e: Exception) { false }
-                Log.i(TAG, "Google sign-in finished, added=$added")
-                val wasActive = active
-                end(ctx)
-                done(added)
-                // Google may leave its own page on screen (e.g. after an error): come back.
-                if (wasActive) returnToUs(ctx)
+                val intent = try {
+                    @Suppress("DEPRECATION")
+                    future.result?.getParcelable<Intent>(AccountManager.KEY_INTENT)
+                } catch (e: Exception) { Log.w(TAG, "Google sign-in", e); null }
+                if (intent == null) {
+                    end(ctx)
+                    failed()
+                    return@addAccount
+                }
+                try {
+                    activity.startActivity(
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                    )
+                    Log.i(TAG, "Google sign-in opened")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Google sign-in start", e)
+                    end(ctx)
+                    failed()
+                }
             },
             main,
         )
@@ -84,7 +99,9 @@ object AccountFlow {
         active = false
         setAllowed(ctx, false)
         try { ctx.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID) } catch (e: Exception) { }
-        Log.i(TAG, "Google sign-in closed, account changes blocked again")
+        val added = googleAccountNames(ctx).size > accountsBefore
+        Log.i(TAG, "Google sign-in closed (account added: $added), account changes blocked again")
+        if (added) Toast.makeText(ctx, "Google account added", Toast.LENGTH_SHORT).show()
     }
 
     private fun backIntent(ctx: Context) = Intent(ctx, SettingsActivity::class.java)

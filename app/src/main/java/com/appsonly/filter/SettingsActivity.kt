@@ -205,8 +205,8 @@ class SettingsActivity : Activity() {
         val names = AccountFlow.googleAccountNames(this)
         note(if (names.isEmpty()) "No Google account on this phone." else names.joinToString("\n"))
         row("Add Google account  ›") {
-            AccountFlow.addGoogleAccount(this) { added ->
-                toast(if (added) "Account added" else "No account added")
+            AccountFlow.addGoogleAccount(this) {
+                toast("Google sign-in couldn't open")
                 build()
             }
         }
