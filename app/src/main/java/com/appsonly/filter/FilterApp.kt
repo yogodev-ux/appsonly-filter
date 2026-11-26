@@ -28,6 +28,7 @@ class FilterApp : Application() {
                 // Our own policy changes also fire these; ignore those and coalesce bursts.
                 val pkg = intent.data?.schemeSpecificPart ?: return
                 if (pkg == packageName) return
+                android.util.Log.i("AppsOnly", "package change from $pkg (${intent.action})")
                 // A brand-new app that isn't allowed (e.g. installed remotely from the Play Store
                 // website) is hidden right away. Updates of allowed apps are left alone.
                 val newApp = intent.action == Intent.ACTION_PACKAGE_ADDED &&

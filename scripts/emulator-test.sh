@@ -170,9 +170,14 @@ expect com.android.vending www.wikipedia.org BLOCKED
 [ -n "$FIRST_ALLOWED" ] && expect "$FIRST_ALLOWED" firebaseinstallations.googleapis.com ALLOWED
 
 BEFORE=$(grep -c "using store guard" "$OUT/logcat.txt")
+PC_BEFORE=$(grep -c "package change from" "$OUT/logcat.txt")
 sleep 20 # let background apps make some lookups
 AFTER=$(grep -c "using store guard" "$OUT/logcat.txt")
-[ $((AFTER-BEFORE)) -le 2 ] && pass "Lock check isn't running in a loop (battery)" || fail "Lock check isn't running in a loop (battery)" "$((AFTER-BEFORE)) runs in 20s"
+PC_AFTER=$(grep -c "package change from" "$OUT/logcat.txt")
+# Google apps on the emulator update themselves in the background; each such change rightly
+# triggers a lock check. A loop is extra runs that no outside package change explains.
+RUNS=$((AFTER-BEFORE)); CHANGES=$((PC_AFTER-PC_BEFORE))
+[ $RUNS -le $((2+CHANGES)) ] && pass "Lock check isn't running in a loop (battery): $RUNS runs, $CHANGES outside app changes in 20s" || fail "Lock check isn't running in a loop (battery)" "$RUNS runs in 20s, only $CHANGES outside app changes"
 grep "BLOCKED" "$OUT/logcat.txt" | sed 's/.*BLOCKED/BLOCKED/' | sort | uniq -c | sort -rn > "$OUT/blocked-lookups.txt" || true
 echo "---- app log (errors and tamper events) ----"
 grep -E "AppsOnlyTamper|W/AppsOnly|E/AppsOnly|FRP" "$OUT/logcat.txt" | grep -v "could not hide" | head -40
