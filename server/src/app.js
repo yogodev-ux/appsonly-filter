@@ -14,12 +14,16 @@
 //   GET  /v1/admin/devices
 //   POST /v1/admin/devices/<id>/status {status: "paid" | "unpaid" | "removed"}
 //   GET  /v1/admin/installer-logs
+// Owner dashboard and staff support portal (step 5, signed-in web pages): see portal.js.
+//   /login  /admin...  /support...
+import { createAuth } from './auth.js';
+import { createPortal } from './portal.js';
 import { escapeHtml, html, json, payCode, randomToken, sha256Hex, timingSafeEqual } from './util.js';
 
 const STATUSES = new Set(['unpaid', 'paid', 'removed']);
 const MAX_LOG = 256 * 1024;
 
-export function createApp({ store, signer, payments, adminToken, baseUrl, priceText = '' }) {
+export function createApp({ store, signer, payments, adminToken, baseUrl, priceText = '', ownerPassword = '' }) {
   const now = () => new Date().toISOString();
 
   async function licenseFor(device) {
@@ -37,12 +41,16 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
     return Boolean(adminToken && m && timingSafeEqual(m[1], adminToken));
   }
 
-  async function setStatus(device, status, by) {
+  async function setStatus(device, status, by, reason = '') {
     device.status = status;
-    device.history = [...(device.history ?? []), { at: now(), status, by }];
+    device.history = [...(device.history ?? []), { at: now(), status, by, ...(reason ? { reason } : {}) }];
     if (status === 'paid' && !device.paidAt) device.paidAt = now();
+    if (status === 'removed') delete device.removedSeenAt;
     await store.putDevice(device);
   }
+
+  const auth = createAuth({ store, baseUrl, ownerPassword });
+  const portal = createPortal({ store, auth, setStatus });
 
   const payUrl = (d) => `${baseUrl}/pay/${d.payCode}`;
 
@@ -76,6 +84,8 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
     const device = await deviceFromAuth(request);
     if (!device) return json({ error: 'unknown device' }, 401);
     device.lastSeen = now();
+    // The phone has now been told to remove the filter; show that in the portal.
+    if (device.status === 'removed' && !device.removedSeenAt) device.removedSeenAt = now();
     await store.putDevice(device);
     return json({ status: device.status, payCode: device.payCode, payUrl: payUrl(device), license: await licenseFor(device) });
   }
@@ -132,6 +142,8 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
     const method = request.method;
     try {
       if (p === '/health') return json({ ok: true });
+      const portalResponse = await portal.handle(request, url);
+      if (portalResponse) return portalResponse;
       if (p === '/v1/activate' && method === 'POST') return activate(request);
       if (p === '/v1/license' && method === 'GET') return license(request);
       if (p === '/v1/stripe/webhook' && method === 'POST') return webhook(request);

@@ -72,10 +72,21 @@ object License {
      * Talks to the server: activates on first use, then fetches the current license.
      * Blocking; call from a background thread. Returns true if the paid state changed.
      */
+    @Volatile private var lastAttempt = 0L
+
+    /** True once the support portal removed the filter from this phone. */
+    fun wasRemoved(ctx: Context) = sp(ctx).getBoolean("removed", false)
+
+    /** [refresh], but at most once per [maxAgeMs] (for screens that open often). */
+    fun refreshIfStale(ctx: Context, maxAgeMs: Long): Boolean =
+        if (System.currentTimeMillis() - lastAttempt < maxAgeMs) false else refresh(ctx)
+
     @Synchronized
     fun refresh(ctx: Context): Boolean {
+        lastAttempt = System.currentTimeMillis()
         val before = isPaid(ctx)
         val p = sp(ctx)
+        var removeNow = false
         try {
             var token: String? = p.getString("token", null)
             var reply: Pair<Int, String>? = token?.let { request("GET", "/v1/license", null, it) }
@@ -109,13 +120,29 @@ object License {
                 .putString("last_error", "")
                 .commit()
             Log.i(TAG, "license status=${payload.optString("status")}")
+            // Step 5: staff removed the filter in the support portal (a signed order for this phone).
+            removeNow = payload.optString("status") == "removed" && LockPolicy.isDeviceOwner(ctx)
         } catch (e: Exception) {
             Log.w(TAG, "license check failed: ${e.message}")
             p.edit().putString("last_error", e.message ?: e.javaClass.simpleName).commit()
         }
+        if (removeNow) {
+            removeFilter(ctx)
+            return true
+        }
         val after = isPaid(ctx)
         if (before != after) TamperLog.record(ctx, if (after) "license_paid" else "license_unpaid")
         return before != after
+    }
+
+    /** Turns this back into a normal phone: every app visible, no restrictions, no Device Owner. */
+    private fun removeFilter(ctx: Context) {
+        Log.i(TAG, "support portal removed the filter; restoring the phone")
+        TamperLog.record(ctx, "filter_removed", "by the support portal")
+        sp(ctx).edit().putBoolean("removed", true).commit()
+        try { ctx.stopService(android.content.Intent(ctx, FilterVpnService::class.java)) } catch (e: Exception) { Log.w(TAG, "stop web filter", e) }
+        LockPolicy.removeEverything(ctx)
+        Log.i(TAG, "filter removed; Device Owner is off")
     }
 
     private fun request(method: String, path: String, body: String?, token: String?): Pair<Int, String> {

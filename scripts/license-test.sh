@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Step 4: the payment gate against the real license server, which runs on the CI machine
+# Steps 4 and 5: the payment gate and the dashboard/support portal against the real license server, which runs on the CI machine
 # (the emulator reaches it at 10.0.2.2:8787). Started by .github/workflows/license-test.yml.
 set -u
 APK=$1
@@ -54,13 +54,55 @@ echo "$L" | grep -q "paid=true" && [ "$(hidden $APPOK)" = "hidden=false" ] && pa
 
 echo "== staff blocks it again (e.g. refund)"
 # Started directly (not in a subshell) so $! is the server itself and nothing else keeps running.
-ADMIN_TOKEN=ci-admin DATA_FILE="$OUT/server-data.json" nohup node server/src/node-server.js </dev/null >> "$OUT/server.log" 2>&1 &
+ADMIN_TOKEN=ci-admin OWNER_PASSWORD=ci-owner-password DATA_FILE="$OUT/server-data.json" nohup node server/src/node-server.js </dev/null >> "$OUT/server.log" 2>&1 &
 echo $! > "$OUT/server.pid"
 for i in $(seq 1 20); do curl -sf $SERVER/health >/dev/null && break; sleep 0.5; done
 ID=$(curl -s -H "authorization: Bearer ci-admin" $SERVER/v1/admin/devices | grep -o '"id":"dev_[^"]*"' | head -1 | cut -d'"' -f4)
 curl -s -o /dev/null -X POST -H "authorization: Bearer ci-admin" -H "content-type: application/json" -d '{"status":"unpaid"}' "$SERVER/v1/admin/devices/$ID/status"
 L=$(lic); echo "license: $L"
 echo "$L" | grep -q "paid=false" && [ "$(hidden $APPOK)" = "hidden=true" ] && pass "Staff can close the apps again" || fail "Staff can close the apps again" "$L $(hidden $APPOK)"
+
+echo "== step 5: owner dashboard and staff support portal $(date +%T)"
+J1="$OUT/owner.cookies"; J2="$OUT/staff.cookies"; rm -f "$J1" "$J2"
+form() { curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$1" -c "$1" -X POST --data-urlencode "${@:3}" "$SERVER$2"; }
+get() { curl -s -b "$1" -c "$1" "$SERVER$2"; }
+R=$(form "$J1" /login "username=owner" --data-urlencode "password=ci-owner-password")
+echo "$R" | grep -q "/admin" && pass "Owner signs in to the dashboard" || fail "Owner signs in to the dashboard" "$R"
+get "$J1" /admin > "$OUT/portal-dashboard.html"
+grep -q "$CODE" "$OUT/portal-dashboard.html" && pass "Dashboard lists the phone" || fail "Dashboard lists the phone"
+R=$(form "$J1" /admin/staff "username=helpdesk" --data-urlencode "password=ci-staff-password")
+echo "$R" | grep -q "ok=Added" && pass "Owner adds a staff account" || fail "Owner adds a staff account" "$R"
+R=$(form "$J2" /login "username=helpdesk" --data-urlencode "password=ci-staff-password")
+echo "$R" | grep -q "/support" && pass "Staff signs in to the support portal" || fail "Staff signs in to the support portal" "$R"
+[ "$(curl -s -o /dev/null -w '%{http_code}' -b "$J2" $SERVER/admin)" = 403 ] && pass "Staff can't open the owner dashboard" || fail "Staff can't open the owner dashboard"
+R=$(curl -s -o /dev/null -w '%{redirect_url}' -b "$J2" "$SERVER/support/find?code=$CODE")
+echo "$R" | grep -q "/support/phone/$CODE" && pass "Staff finds the phone by its code" || fail "Staff finds the phone by its code" "$R"
+get "$J2" "/support/phone/$CODE" > "$OUT/portal-phone.html"
+
+R=$(form "$J2" "/portal/device/$ID/unlock" "reason=Paid by phone (CI test)" --data-urlencode "back=/support/phone/$CODE")
+L=$(lic); echo "license: $L"
+echo "$L" | grep -q "paid=true" && [ "$(hidden $APPOK)" = "hidden=false" ] && pass "Staff unlocks the phone from the portal" || fail "Staff unlocks the phone from the portal" "$R / $L"
+
+R=$(form "$J2" "/portal/device/$ID/remove" "reason=Customer asked (CI test)" --data-urlencode "confirm=AOS-0000-0000" --data-urlencode "back=/support/phone/$CODE")
+L=$(lic)
+echo "$R" | grep -q "err=" && echo "$L" | grep -q "removed=false" && pass "Removal refused when the typed code is wrong" || fail "Removal refused when the typed code is wrong" "$R / $L"
+
+owner_of_phone() { sh_ dumpsys device_policy | grep -A3 "Device Owner" | grep -q "$PKG"; }
+owner_of_phone && pass "Still Device Owner before removal" || fail "Still Device Owner before removal"
+R=$(form "$J2" "/portal/device/$ID/remove" "reason=Customer asked (CI test)" --data-urlencode "confirm=$CODE" --data-urlencode "back=/support/phone/$CODE")
+echo "$R" | grep -q "ok=Removal" && pass "Staff sends 'remove the filter'" || fail "Staff sends 'remove the filter'" "$R"
+L=$(lic); echo "license: $L"; sleep 3
+echo "$L" | grep -q "removed=true" && pass "Phone obeys the removal" || fail "Phone obeys the removal" "$L"
+owner_of_phone && fail "Device Owner is gone after removal" || pass "Device Owner is gone after removal"
+[ "$(hidden com.android.vending)" = "hidden=false" ] && pass "Hidden apps are back (Play Store)" || fail "Hidden apps are back (Play Store)" "$(hidden com.android.vending)"
+sh_ am start -n $PKG/.MainActivity >/dev/null; sleep 3
+adb exec-out screencap -p > "$OUT/3-filter-removed.png"
+screen_has "The filter is removed" && pass "Phone says the filter is removed" || fail "Phone says the filter is removed"
+get "$J1" "/admin/device/$ID" > "$OUT/portal-phone-after.html"
+grep -q "confirmed the removal" "$OUT/portal-phone-after.html" && pass "Portal shows the phone confirmed the removal" || fail "Portal shows the phone confirmed the removal"
+get "$J1" /admin/audit > "$OUT/portal-action-log.html"
+grep -q "helpdesk" "$OUT/portal-action-log.html" && grep -q "Customer asked" "$OUT/portal-action-log.html" && pass "Action log records who did it and why" || fail "Action log records who did it and why"
+rm -f "$J1" "$J2"
 
 echo "== installer logs reach the server"
 curl -s -o /dev/null -w '%{http_code}' -X POST -H "content-type: text/plain" --data "STEP Checking the phone" $SERVER/v1/installer-logs | grep -q 200 \

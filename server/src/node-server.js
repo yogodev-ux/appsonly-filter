@@ -1,6 +1,7 @@
 // Runs the server on plain Node (local testing and CI; any small VPS works too).
 // Settings come from environment variables:
 //   PORT (8787)  BASE_URL  DATA_FILE (data.json)  ADMIN_TOKEN
+//   OWNER_PASSWORD (sign-in for the owner dashboard at /admin, user name "owner")
 //   LICENSE_PRIVATE_JWK (JSON; default: the committed TEST key)
 //   PAYMENTS=test|stripe  STRIPE_SECRET_KEY  STRIPE_WEBHOOK_SECRET  PRICE_CENTS  CURRENCY  PRICE_TEXT
 import http from 'node:http';
@@ -15,6 +16,7 @@ const port = Number(env.PORT ?? 8787);
 const baseUrl = env.BASE_URL ?? `http://localhost:${port}`;
 const testKeys = JSON.parse(readFileSync(new URL('../test-keys.json', import.meta.url)));
 const privateJwk = env.LICENSE_PRIVATE_JWK ? JSON.parse(env.LICENSE_PRIVATE_JWK) : testKeys.privateJwk;
+if (!env.OWNER_PASSWORD) console.warn('OWNER_PASSWORD is not set, so nobody can sign in to the dashboard.');
 if (!env.LICENSE_PRIVATE_JWK) console.warn('Using the TEST signing key. Set LICENSE_PRIVATE_JWK for real use.');
 
 const payments = env.PAYMENTS === 'stripe'
@@ -34,6 +36,7 @@ const app = createApp({
   adminToken: env.ADMIN_TOKEN ?? '',
   baseUrl,
   priceText: env.PRICE_TEXT ?? '',
+  ownerPassword: env.OWNER_PASSWORD ?? '',
 });
 
 http

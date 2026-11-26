@@ -72,6 +72,7 @@ class MainActivity : Activity() {
     private fun render() {
         val cfg = Prefs.load(this)
         when {
+            License.wasRemoved(this) && !cfg.locked -> showRemoved()
             !LockPolicy.isDeviceOwner(this) -> showNotOwner()
             !cfg.locked -> showSetup()
             !License.isPaid(this) -> {
@@ -87,6 +88,14 @@ class MainActivity : Activity() {
                 KioskMode.enter(this)
                 // Catch anything installed since last time, then refresh the icons.
                 app.enforceAsync { runOnUiThread { if (!isFinishing) showHome(Prefs.load(this)) } }
+                // Pick up orders from the support portal (lock again, remove) without waiting
+                // for the 15-minute watchdog.
+                app.worker.execute {
+                    if (License.refreshIfStale(this, 5 * 60_000L)) {
+                        LockPolicy.enforce(this)
+                        runOnUiThread { if (!isFinishing) render() }
+                    }
+                }
             }
         }
     }
@@ -139,6 +148,18 @@ class MainActivity : Activity() {
             text = "Settings (Wi-Fi)"
             setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
         })
+        setContentView(col)
+    }
+
+    // ---------- after the support portal removed the filter (step 5) ----------
+
+    private fun showRemoved() {
+        val col = column()
+        col.addView(text("The filter is removed", 22f, bold = true))
+        col.addView(text(
+            "This is a normal phone again. All apps and settings are back.\n\n" +
+                "You can uninstall Apps Only in Settings, Apps."
+        ))
         setContentView(col)
     }
 

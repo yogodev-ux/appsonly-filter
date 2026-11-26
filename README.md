@@ -217,3 +217,30 @@ another phone (the phone itself can't browse), plus Settings for Wi-Fi. The phon
   Release builds need `-PlicenseServer=https://... -PlicensePublicKey=...` and the real private
   key in the server's `LICENSE_PRIVATE_JWK` secret (`npm run keys` makes a pair).
 - Test builds can skip payment with `--ez paid true` on the dev lock broadcast.
+
+## Step 5: owner dashboard and staff support portal
+
+Both are web pages served by the same license server (`server/`), so there is nothing extra to host.
+
+- **Owner dashboard** at `/admin`. Sign in as user `owner` with the password in the server's
+  `OWNER_PASSWORD` setting. Shows every phone (code, status, model, set-up date, payment date,
+  last check-in) with counts, the Windows installer's setup logs, the action log, and the
+  staff accounts page, where the owner adds staff, sets their passwords, or turns them off.
+- **Support portal** at `/support`, for staff the owner added. Staff type the code shown on the
+  customer's phone (AOS-XXXX-XXXX) to open that one phone. They can't list phones.
+  - **Unlock (mark paid):** the phone opens its apps at its next check-in.
+  - **Remove the filter:** staff must type the phone's code again to confirm. At its next
+    check-in the phone gets a signed "removed" license, unhides every app, clears all
+    restrictions, turns off the web filter, gives up Device Owner, and shows "The filter is
+    removed". The customer can then uninstall the app.
+  - **Lock again (mark unpaid):** owner only, for example after a refund.
+- Every action needs a reason and is saved in the action log with the person's name.
+- Security: passwords are stored as PBKDF2 hashes; sign-ins use an HttpOnly, SameSite=Strict
+  cookie that lasts 12 hours; 5 wrong passwords lock that user name for 15 minutes; turning a
+  staff member off ends their access at once; form posts from other sites are refused.
+- Phones check in when they start, every 15 minutes, every 30 seconds on the payment screen, and
+  when the home screen opens (at most every 5 minutes).
+
+Tests: `server/test/portal.test.js` (sign-in, roles, unlock, removal, lockout, cross-site posts),
+and the payment-gate emulator test (`scripts/license-test.sh`) now signs in as the owner, adds a
+staff member, and has that staff member unlock and then remove the filter on the emulator.

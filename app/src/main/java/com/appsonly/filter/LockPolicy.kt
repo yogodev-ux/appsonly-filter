@@ -184,8 +184,9 @@ object LockPolicy {
     }
 
     /**
-     * Undo everything. Used only by the developer unlock in debug builds; the release app
-     * has no on-phone way to call this (later: the support portal).
+     * Undo everything. Called when the support portal sends a signed "removed" license
+     * (License.removeFilter), and by the developer unlock in debug builds. There is no
+     * on-phone button for it.
      */
     @Suppress("DEPRECATION")
     fun removeEverything(ctx: Context) {
