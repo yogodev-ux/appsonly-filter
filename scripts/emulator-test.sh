@@ -71,7 +71,11 @@ for i in 1 2 3 4 5 6; do
   sh_ input swipe 540 1800 540 700 300 >/dev/null; sleep 1
   sh_ uiautomator dump /sdcard/ui.xml >/dev/null; sh_ cat /sdcard/ui.xml > "$OUT/setup-ui.xml"
 done
-[ $found = 1 ] && pass "Phone/Messages are normal entries in the setup list" || fail "Phone/Messages are normal entries in the setup list" "not found in the list"
+if [ $found = 1 ]; then pass "Phone/Messages are normal entries in the setup list"; else
+  fail "Phone/Messages are normal entries in the setup list" "not found in the list"
+  echo "---- setup list texts ----"; grep -o 'text="[^"]*"' "$OUT/setup-ui.xml" | sort -u | head -40
+  sh_ cmd role get-role-holders android.app.role.DIALER; sh_ cmd role get-role-holders android.app.role.SMS
+fi
 sh_ input keyevent KEYCODE_BACK >/dev/null
 
 echo "== lock"
@@ -174,7 +178,10 @@ sleep 20 # let background apps make some lookups
 AFTER=$(grep -c "using store guard" "$OUT/logcat.txt")
 # The old bug re-ran the check every second (~20 runs). A few runs are normal: each app the
 # Play Store updates in the background triggers one (3 s apart at most once).
-[ $((AFTER-BEFORE)) -le 5 ] && pass "Lock check isn't running in a loop (battery)" || fail "Lock check isn't running in a loop (battery)" "$((AFTER-BEFORE)) runs in 20s"
+if [ $((AFTER-BEFORE)) -le 5 ]; then pass "Lock check isn't running in a loop (battery)"; else
+  fail "Lock check isn't running in a loop (battery)" "$((AFTER-BEFORE)) runs in 20s"
+  echo "---- what started the runs ----"; grep -E "enforce from|package event" "$OUT/logcat.txt" | tail -20
+fi
 grep "BLOCKED" "$OUT/logcat.txt" | sed 's/.*BLOCKED/BLOCKED/' | sort | uniq -c | sort -rn > "$OUT/blocked-lookups.txt" || true
 echo "---- app log (errors and tamper events) ----"
 grep -E "AppsOnlyTamper|W/AppsOnly|E/AppsOnly|FRP" "$OUT/logcat.txt" | grep -v "could not hide" | head -40

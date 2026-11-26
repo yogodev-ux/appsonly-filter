@@ -27,6 +27,7 @@ class FilterApp : Application() {
             override fun onReceive(context: Context, intent: Intent) {
                 // Our own policy changes also fire these; ignore those and coalesce bursts.
                 if (intent.data?.schemeSpecificPart == packageName) return
+                android.util.Log.d("AppsOnly", "package event ${intent.action} ${intent.data?.schemeSpecificPart}")
                 scheduleEnforce()
             }
         }

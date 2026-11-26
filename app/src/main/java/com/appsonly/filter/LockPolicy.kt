@@ -71,6 +71,12 @@ object LockPolicy {
     fun enforce(ctx: Context) {
         val cfg = Prefs.load(ctx)
         if (!cfg.locked || !isDeviceOwner(ctx)) return
+        if (BuildConfig.DEBUG) {
+            // Which code path asked for this run (helps the automated "no loop" check).
+            val from = Throwable().stackTrace.drop(1).take(4)
+                .joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}" }
+            Log.d(TAG, "enforce from $from")
+        }
         lastHidden.clear()
         try { enforceLocked(ctx, cfg) } finally {
             if (lastHidden.isNotEmpty() && Prefs.lockedOnce(ctx)) {
