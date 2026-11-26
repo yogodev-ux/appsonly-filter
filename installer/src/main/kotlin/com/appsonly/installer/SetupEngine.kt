@@ -165,6 +165,7 @@ class SetupEngine(
         info("App installed.")
 
         if (phone.alreadyInstalled) {
+            allowScreenGuard()
             if (customer != null && !sendCustomer(customer)) return false
             openApp()
             info("Done. The app was updated; the phone stays locked as before.")
@@ -198,6 +199,7 @@ class SetupEngine(
         val owner = Parsers.deviceOwnerPackage(adb.shell("dumpsys device_policy").out)
         if (owner != config.pkg) { error("Device Owner did not stick (owner is ${owner ?: "nobody"})."); return false }
         info("Apps Only is now the phone's manager.")
+        allowScreenGuard()
 
         if (!sendCustomer(customer!!)) return false
         openApp()
@@ -234,6 +236,16 @@ class SetupEngine(
         }
         error(Parsers.explainDpmError(last))
         return false
+    }
+
+    /**
+     * Lets the app switch on its screen guard (an accessibility service that closes any
+     * screen of an app that isn't allowed) and keep it on. Only a computer can give this.
+     */
+    private fun allowScreenGuard() {
+        val r = adb.shell("pm grant ${config.pkg} android.permission.WRITE_SECURE_SETTINGS")
+        if (r.ok && r.out.isBlank()) info("Screen guard allowed.")
+        else warn("Could not allow the screen guard (${r.out.lines().firstOrNull().orEmpty()}). The lock still works without it.")
     }
 
     /**
