@@ -84,6 +84,20 @@ class DevStatusReceiver : BroadcastReceiver() {
 }
 
 /**
+ * Google sign-in escape test hook. Optionally shortens the sign-in timeout, and reports
+ * whether the sign-in window is still open:
+ *   adb shell am broadcast -n com.appsonly.filter/.dev.DevSignInReceiver --el timeout_ms 20000
+ * Result data is "active=true|false timeout_ms=N".
+ */
+class DevSignInReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val t = intent.getLongExtra("timeout_ms", -1L)
+        if (t > 0) com.appsonly.filter.AccountFlow.timeoutMs = t
+        resultData = "active=${com.appsonly.filter.AccountFlow.active} timeout_ms=${com.appsonly.filter.AccountFlow.timeoutMs}"
+    }
+}
+
+/**
  * Pretends to be a slow phone: after the next boot, kiosk mode starts only once the phone
  * has been up for this many milliseconds (0 turns it off):
  *   adb shell am broadcast -n com.appsonly.filter/.dev.DevKioskDelayReceiver --el ms 60000

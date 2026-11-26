@@ -13,7 +13,7 @@ import android.util.Log
 object DeviceControls {
     private const val TAG = "AppsOnly"
 
-    /** Runtime permissions we grant ourselves (Wi-Fi scanning needs location; Bluetooth list). */
+    /** Runtime permissions we grant ourselves (Wi-Fi scanning needs location; Bluetooth list; sign-in notification). */
     private val SELF_PERMISSIONS = buildList {
         add(Manifest.permission.ACCESS_FINE_LOCATION)
         add(Manifest.permission.ACCESS_COARSE_LOCATION)
@@ -21,6 +21,7 @@ object DeviceControls {
             add(Manifest.permission.BLUETOOTH_CONNECT)
             add(Manifest.permission.BLUETOOTH_SCAN)
         }
+        if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     fun prepare(ctx: Context) {
@@ -28,8 +29,14 @@ object DeviceControls {
         val admin = AdminReceiver.component(ctx)
         for (perm in SELF_PERMISSIONS) {
             try {
+                // Only grant once: every grant of location makes Android show the
+                // "Apps Only has location access" notification again, and this runs on
+                // every home-screen visit.
+                if (dpm.getPermissionGrantState(admin, ctx.packageName, perm) ==
+                    DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED) continue
                 dpm.setPermissionGrantState(admin, ctx.packageName, perm,
                     DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
+                Log.i(TAG, "granted $perm")
             } catch (e: Exception) { Log.w(TAG, "grant $perm", e) }
         }
         // Wi-Fi scan results need location turned on.
