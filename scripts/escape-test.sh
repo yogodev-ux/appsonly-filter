@@ -18,16 +18,16 @@ FAILS=0
 RESULTS=""
 : > "$OUT/escapes.txt"
 
-sh_() { adb shell "$@" 2>&1 | tr -d '\r'; }
+sh_() { adb shell "$@" < /dev/null 2>&1 | tr -d '\r'; }
 pass() { RESULTS+="| ✅ | $1 |"$'\n'; echo "PASS: $1"; }
 fail() { RESULTS+="| ❌ | $1 — ${2:-} |"$'\n'; echo "FAIL: $1 -- ${2:-}"; echo "$1 -- ${2:-}" >> "$OUT/escapes.txt"; FAILS=$((FAILS+1)); }
 info() { RESULTS+="| ℹ️ | $1 |"$'\n'; echo "INFO: $1"; }
 slug() { echo "$1" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-80; }
 shot() { adb exec-out screencap -p > "$OUT/shots/$(slug "$1").png" 2>/dev/null || true; }
-resumed() { sh_ dumpsys activity activities | grep -m1 -E "topResumedActivity|mResumedActivity" | grep -oE '[a-zA-Z0-9_.]+/[a-zA-Z0-9_.$]+' | head -1; }
-focus() { sh_ dumpsys window | grep -m1 mCurrentFocus | sed 's/.*mCurrentFocus=//'; }
+resumed() { sh_ dumpsys activity activities | grep -m1 -E "topResumedActivity=" | grep -oE '[a-zA-Z0-9_.]+/[a-zA-Z0-9_.$]+' | head -1; }
+focus() { sh_ dumpsys window | grep mCurrentFocus | sed 's/.*mCurrentFocus=//' | sort -u | tr '\n' ' '; }
 kiosk() { sh_ dumpsys activity activities | grep -m1 -i mLockTaskModeState | sed 's/.*=//'; }
-home() { sh_ input keyevent KEYCODE_HOME >/dev/null; sleep 1.5; }
+home() { sh_ input keyevent KEYCODE_BACK >/dev/null; sh_ input keyevent KEYCODE_BACK >/dev/null; sh_ input keyevent KEYCODE_HOME >/dev/null; sleep 1.5; }
 sbflags() { sh_ dumpsys statusbar | grep -m2 -iE "mDisabled[12]|disable1|disable2" | tr '\n' ' '; }
 
 REC_PID=""
@@ -66,10 +66,13 @@ home; sleep 3
 [ "$(kiosk)" = "LOCKED" ] && pass "Kiosk mode on after locking" || fail "Kiosk mode on after locking" "$(kiosk)"
 shot 00-home
 
-# Packages that may be in front: ours, the allowed ones, the phone app (calls are allowed here)
-# and Android's own "pick an app" / permission screens.
+# Packages that may be in front: ours, the allowed ones and what comes with them (here the
+# phone app and contacts, because calls are allowed), which is every app that still has an
+# icon, plus the call screen.
+VISIBLE=$(sh_ cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER | grep / | cut -d/ -f1 | sort -u | tr '\n' ' ')
 DIALERS=$(sh_ cmd package query-activities --brief -a android.intent.action.DIAL | grep / | cut -d/ -f1 | sort -u | tr '\n' ' ')
-OK_PKGS=" $PKG ${ALLOWED//,/ } $DIALERS com.android.server.telecom "
+OK_PKGS=" $PKG ${ALLOWED//,/ } $VISIBLE $DIALERS com.android.server.telecom "
+echo "packages allowed in front: $OK_PKGS" | tee "$OUT/ok-packages.txt"
 is_ok_pkg() { case "$OK_PKGS" in *" $1 "*) return 0;; esac; return 1; }
 
 # check_front <name>: fails if a package that isn't allowed is in front, or the shade is open.
