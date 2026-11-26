@@ -37,6 +37,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         AccountFlow.end(this)
+        KioskMode.endGoogleSignIn(this)
         render()
     }
 

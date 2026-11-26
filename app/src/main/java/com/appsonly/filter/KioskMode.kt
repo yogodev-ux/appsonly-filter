@@ -32,6 +32,54 @@ object KioskMode {
         // and "Google settings" screens, which lead on to other Google pages.
     )
 
+    private const val GMS = "com.google.android.gms"
+    private const val SIGN_IN_MS = 5 * 60_000L
+
+    /** While set (time in ms), Play services may open its own sign-in window. */
+    @Volatile
+    private var googleSignInUntil = 0L
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private val signInTimeout = Runnable { endGoogleSignIn(null) }
+    private var appCtx: Context? = null
+
+    /**
+     * Settings > Accounts > Add account > Google opens Google's sign-in in a NEW window that
+     * belongs to Play services, which kiosk mode refuses. So while the customer is in that
+     * flow (they reached Settings' "Add an account" screen) Play services is allowed for at
+     * most [SIGN_IN_MS]. The screen guard still closes every other Play services screen
+     * (Google Account, Google settings ...), and it is taken away again when the time is up
+     * or the customer is back on our home screen.
+     */
+    fun beginGoogleSignIn(ctx: Context) {
+        val dpm = LockPolicy.dpm(ctx)
+        if (!dpm.isDeviceOwnerApp(ctx.packageName)) return
+        appCtx = ctx.applicationContext
+        val fresh = System.currentTimeMillis() >= googleSignInUntil
+        googleSignInUntil = System.currentTimeMillis() + SIGN_IN_MS
+        main.removeCallbacks(signInTimeout)
+        main.postDelayed(signInTimeout, SIGN_IN_MS)
+        if (!fresh) return
+        try {
+            val admin = AdminReceiver.component(ctx)
+            dpm.setLockTaskPackages(admin, (dpm.getLockTaskPackages(admin).toSet() + GMS).toTypedArray())
+            Log.i(TAG, "Google sign-in allowed from Settings")
+        } catch (e: Exception) { Log.w(TAG, "google sign-in allow", e) }
+    }
+
+    fun endGoogleSignIn(ctx: Context?) {
+        main.removeCallbacks(signInTimeout)
+        if (googleSignInUntil == 0L) return
+        googleSignInUntil = 0L
+        val c = ctx ?: appCtx ?: return
+        try {
+            val dpm = LockPolicy.dpm(c)
+            if (!dpm.isDeviceOwnerApp(c.packageName)) return
+            val admin = AdminReceiver.component(c)
+            dpm.setLockTaskPackages(admin, (dpm.getLockTaskPackages(admin).toSet() - GMS).toTypedArray())
+            Log.i(TAG, "Google sign-in window closed, Play services back to normal")
+        } catch (e: Exception) { Log.w(TAG, "google sign-in end", e) }
+    }
+
     private const val FEATURES =
         DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO or      // clock, battery, signal
             DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS or // notification shade (no Quick Settings)
@@ -43,7 +91,8 @@ object KioskMode {
     fun configure(ctx: Context, dpm: DevicePolicyManager, admin: ComponentName, visible: Set<String>) {
         hideSideDoors(ctx, dpm, admin, visible)
         ScreenGuard.ensureOn(ctx)
-        val pkgs = (visible + SYSTEM_HELPERS + AppScanner.keyboards(ctx) + ctx.packageName).toTypedArray()
+        val signIn = if (System.currentTimeMillis() < googleSignInUntil) setOf(GMS) else emptySet()
+        val pkgs = (visible + SYSTEM_HELPERS + AppScanner.keyboards(ctx) + ctx.packageName + signIn).toTypedArray()
         try {
             dpm.setLockTaskPackages(admin, pkgs)
             dpm.setLockTaskFeatures(admin, FEATURES)

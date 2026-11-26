@@ -38,6 +38,7 @@ class ScreenGuard : AccessibilityService() {
         if (pkg == "com.google.android.gms" && (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) Log.d(TAG, "guard saw $pkg/$cls")
         val title = event.text.joinToString(" ").trim()
         if (pkg == settingsPkg) Log.i(TAG, "Settings screen: $cls \"$title\"")
+        if (pkg == settingsPkg && ADD_ACCOUNT_CHOOSER.containsMatchIn(cls)) KioskMode.beginGoogleSignIn(this)
         if (!blocked(this, pkg, cls, title)) return
         Log.i(TAG, "Screen guard closed $pkg/$cls \"$title\"")
         // Back first closes the screen itself; Home alone only hides it, and some screens
@@ -119,6 +120,8 @@ class ScreenGuard : AccessibilityService() {
         }
 
         /** Google's sign-in screens (adding an account from the real Settings app). */
+        /** Settings' "Add an account" list: the customer is about to add an account. */
+        private val ADD_ACCOUNT_CHOOSER = Regex("""ChooseAccountActivity|AddAccountSettings""")
         private val ADD_ACCOUNT = Regex("""com\.google\.android\.gms\.auth\.uiflows\.addaccount\.""")
 
         private class Allowed(val apps: Set<String>, val keyboards: Set<String>)
