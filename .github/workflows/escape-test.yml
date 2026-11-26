@@ -1,0 +1,60 @@
+name: Escape test
+
+# Tries to get around the lock: boot window on a slow phone, system popups, links into
+# Settings / browsers / the Play Store, from new windows and from inside an allowed app.
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+jobs:
+  escape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build debug APKs
+        run: ./gradlew --no-daemon :app:assembleDebug :testapps:escapeprobe:assembleDebug
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run escape test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: playstore
+          arch: x86_64
+          profile: pixel_6
+          # Same as the emulator test: enough memory/cores that System UI doesn't stall.
+          # The "slow phone" is simulated by the app-side delay, not a starved emulator.
+          ram-size: 4096M
+          cores: 4
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: bash scripts/escape-test.sh app/build/outputs/apk/debug/app-debug.apk testapps/escapeprobe/build/outputs/apk/debug/escapeprobe-debug.apk
+      # A few key screenshots, shrunk, as text in the log, so they can be read where the
+      # artifact zip can't be downloaded.
+      - name: Key screenshots in the log
+        if: always()
+        run: |
+          cd test-output/shots 2>/dev/null || exit 0
+          picks=$(ls 00-home*.png quick-settings*.png notification-shade*.png power-menu*.png 2>/dev/null
+                  ls From_allowed_app__Play_Store_main_screen*.png 2>/dev/null | head -1
+                  ls boot-* sweep-* 2>/dev/null | head -4)
+          for f in $picks; do
+            if command -v convert >/dev/null; then convert "$f" -resize 360x -quality 60 /tmp/s.jpg; else cp "$f" /tmp/s.jpg; fi
+            echo "@@SHOT-BEGIN $f"; base64 -w 0 /tmp/s.jpg; echo; echo "@@SHOT-END $f"
+          done
+      - name: Upload screenshots, video and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: escape-test
+          path: test-output/

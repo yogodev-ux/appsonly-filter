@@ -22,19 +22,22 @@ object LockPolicy {
         UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES_GLOBALLY,
         UserManager.DISALLOW_UNINSTALL_APPS,
         UserManager.DISALLOW_APPS_CONTROL, // no force-stop, clear data or disable from Settings
-        // The real Settings app is hidden; these are a second wall in case any part of it
-        // is ever reachable:
+        // The phone's real Settings app is open to the customer; these lock its dangerous parts
+        // (the screen guard closes the riskiest screens as a second wall):
         UserManager.DISALLOW_FACTORY_RESET,
         UserManager.DISALLOW_SAFE_BOOT,
         UserManager.DISALLOW_ADD_USER,
         UserManager.DISALLOW_REMOVE_USER,
-        UserManager.DISALLOW_MODIFY_ACCOUNTS,
         UserManager.DISALLOW_CONFIG_VPN,
         UserManager.DISALLOW_CONFIG_DATE_TIME,
         UserManager.DISALLOW_CONFIG_CREDENTIALS,
         UserManager.DISALLOW_NETWORK_RESET,
         UserManager.DISALLOW_CONFIG_PRIVATE_DNS, // keep DNS going through our web filter
-    )
+        UserManager.DISALLOW_USER_SWITCH,
+        UserManager.DISALLOW_CONFIG_MOBILE_NETWORKS, // an APN proxy could get around the web filter
+        UserManager.DISALLOW_BLUETOOTH_SHARING,
+        UserManager.DISALLOW_CONFIG_TETHERING,
+    ) + (if (android.os.Build.VERSION.SDK_INT >= 34) listOf("no_config_default_apps") else emptyList())
 
     /**
      * Blocks Developer options and USB debugging. Left off in debug (test) builds,
@@ -58,6 +61,8 @@ object LockPolicy {
         // Payment gate (step 4): nothing opens until the phone is paid.
         if (cfg.locked && !License.isPaid(ctx)) return emptySet()
         val result = cfg.allowedPackages.toMutableSet()
+        // The phone's own Settings app is always there (its risky parts are locked).
+        result += AppScanner.settingsPackage(ctx)
         if (cfg.allowPhone) result += AppScanner.phonePackages(ctx)
         if (cfg.allowSms) result += AppScanner.smsPackages(ctx)
         // Browsers are never allowed, even if they also act as a dialer or similar.
@@ -90,12 +95,13 @@ object LockPolicy {
         val dpm = dpm(ctx)
         val admin = AdminReceiver.component(ctx)
 
-        // 1. User restrictions. Account changes stay allowed only while the Google
-        //    sign-in started from our Settings screen is open.
+        // 1. User restrictions.
         for (r in activeRestrictions(ctx)) {
-            if (r == UserManager.DISALLOW_MODIFY_ACCOUNTS && AccountFlow.active) continue
             try { dpm.addUserRestriction(admin, r) } catch (e: Exception) { Log.w(TAG, "restriction $r", e) }
         }
+        // Accounts are added and removed in the phone's real Settings app (Google's own
+        // sign-in). Older versions blocked this; lift that block.
+        try { dpm.clearUserRestriction(admin, UserManager.DISALLOW_MODIFY_ACCOUNTS) } catch (e: Exception) { Log.w(TAG, "accounts", e) }
 
         // 2. We are the only home screen, and we can't be uninstalled.
         setAsHome(ctx, dpm, admin)
@@ -105,11 +111,10 @@ object LockPolicy {
         val visible = visiblePackages(ctx, cfg)
         val untouchable = AppScanner.untouchable(ctx)
         val webView = AppScanner.webViewPackage()
-        // The real Settings app is hidden too; our own Settings screen replaces it.
         // Any app a user installed is a target too, even one without an icon (for example one
         // installed remotely from the Play Store website), so it can't run in the background.
         val targets = AppScanner.launchable(ctx) + AppScanner.browsers(ctx) +
-            AppScanner.homeApps(ctx) + AppScanner.PLAY_STORE + AppScanner.settingsPackage(ctx) +
+            AppScanner.homeApps(ctx) + AppScanner.PLAY_STORE +
             AppScanner.userInstalled(ctx)
 
         val toSuspend = mutableListOf<String>()
@@ -145,6 +150,9 @@ object LockPolicy {
         }
         StoreGuard.apply(ctx, dpm, admin)
         KioskMode.configure(ctx, dpm, admin, visible)
+        // Accessibility in Settings: only the phone's built-in services and our screen guard
+        // can be switched on (an accessibility app could read and press anything).
+        try { dpm.setPermittedAccessibilityServices(admin, listOf(ctx.packageName)) } catch (e: Exception) { Log.w(TAG, "accessibility list", e) }
         TamperGuard.apply(ctx, dpm, admin)
 
         // 4. Device Owner extras for our own Settings screen and web filter.

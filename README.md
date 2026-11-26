@@ -182,6 +182,13 @@ app/src/debug/      developer unlock (debug builds only)
 CI packages it as `AppsOnlySetup-windows` (artifact of the "Windows installer" workflow): a folder with
 `AppsOnlySetup.exe`, its own Java, `platform-tools` (adb) and `apps-only.apk`. Nothing to install on the PC.
 
+`apps-only.apk` in that package is always the **signed release** app, never the test build. CI makes it
+only when these repository secrets are set: `RELEASE_KEYSTORE_BASE64` (the release keystore, base64),
+`RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`, `LICENSE_PUBLIC_KEY` and
+`LICENSE_SERVER`. Without them the package is still built and smoke-tested but not uploaded. A release
+build refuses to build at all without the real license key, the real server and the release keystore,
+so it can never fall back to the test key in `server/test-keys.json`.
+
 What it does, in order:
 1. Finds exactly one phone with USB debugging allowed (tells the person what to do if not).
 2. Checks Android 10+, the model list (`installer/src/main/resources/supported-models.json`),
@@ -270,7 +277,7 @@ Plan: see the "Portals plan" doc. Part 1 is done here:
 - **Offline removal:** at setup the phone makes a one-time uninstall code (`XXXX-XXXX-XXXX`) and
   sends it to the server with the customer's details, then keeps only a salted hash. The portals
   show it only after the filter was removed there (so the customer's removal code is still checked),
-  and only until the phone confirms. The customer types it in Settings > Remove the filter.
+  and only until the phone confirms. The customer taps "Remove the filter" at the bottom of the home screen (or in Settings while not paid) and types it.
   5 wrong codes block the box for an hour.
 - **Tamper reports:** new tamper attempts from the phone's log are sent on each check-in and become
   alerts in the owner portal.
