@@ -24,6 +24,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" tools:targetApi="s" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- "Back to home" notification while Google sign-in is open. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".FilterApp"
@@ -58,6 +60,13 @@
         <!-- Our own Settings screen and Wi-Fi screen (real controls, no system Settings). -->
         <activity android:name=".SettingsActivity" android:exported="false" android:label="Settings" />
         <activity android:name=".WifiActivity" android:exported="false" android:label="Wi-Fi" />
+        <!-- Holds Google's sign-in pages in a task of our own, so we can close them. -->
+        <activity
+            android:name=".SignInHostActivity"
+            android:exported="false"
+            android:taskAffinity="com.appsonly.filter.signin"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!-- "Not available" screen; links into the Play Store are sent here. -->
         <activity
