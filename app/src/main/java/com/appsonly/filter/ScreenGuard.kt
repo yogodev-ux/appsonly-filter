@@ -40,6 +40,9 @@ class ScreenGuard : AccessibilityService() {
         if (pkg == settingsPkg) Log.i(TAG, "Settings screen: $cls \"$title\"")
         if (!blocked(this, pkg, cls, title)) return
         Log.i(TAG, "Screen guard closed $pkg/$cls \"$title\"")
+        // Back first closes the screen itself; Home alone only hides it, and some screens
+        // (Play services' Google Account) come straight back to the front.
+        performGlobalAction(GLOBAL_ACTION_BACK)
         performGlobalAction(GLOBAL_ACTION_HOME)
         logOnce("$pkg/$cls")
     }
