@@ -237,15 +237,27 @@ N=$(grep -c "granted android.permission.ACCESS_FINE_LOCATION" "$OUT/logcat.txt")
 echo "== Google sign-in always has a way back"
 signin_state() { sh_ am broadcast -n $PKG/.dev.DevSignInReceiver "$@" | grep -o 'active=[a-z]*'; }
 signin_state --el timeout_ms 30000 >/dev/null
+ours() { resumed | grep -q "$PKG"; }
 open_signin() { # from home: Settings -> "Add Google account" (scrolls down to find it)
   home; tap_text "Settings"; sleep 3
   for i in 1 2 3 4 5 6; do
-    tap_text "Add Google account" && { sleep 8; return 0; }
+    if tap_text "Add Google account"; then
+      # Wait (up to 30 s; the emulator can be slow) until Google's page is in front,
+      # or the sign-in has already ended and we are back.
+      local seen=0
+      for j in $(seq 1 15); do
+        sleep 2
+        ours || return 0
+        st=$(signin_state)
+        [ "$st" = "active=true" ] && seen=1
+        [ "$st" = "active=false" ] && [ $seen = 1 ] && return 0
+      done
+      return 0
+    fi
     sh_ input swipe 540 1900 540 700 300 >/dev/null; sleep 1
   done
   return 1
 }
-ours() { resumed | grep -q "$PKG"; }
 open_signin; SIGNIN_FOUND=$?
 echo "top after tapping Add Google account: $(resumed)"
 grep -E "Google sign-in|AccountManager|E/AppsOnly|W/AppsOnly" "$OUT/logcat.txt" | grep -v "could not hide" | tail -15
