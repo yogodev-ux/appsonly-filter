@@ -163,8 +163,8 @@ object AccountFlow {
         val dpm = LockPolicy.dpm(ctx)
         val admin = AdminReceiver.component(ctx)
         try {
+            // Accounts are open in the real Settings app now; never block them again here.
             if (allowed) dpm.clearUserRestriction(admin, UserManager.DISALLOW_MODIFY_ACCOUNTS)
-            else dpm.addUserRestriction(admin, UserManager.DISALLOW_MODIFY_ACCOUNTS)
         } catch (e: Exception) {
             Log.w(TAG, "account restriction", e)
         }

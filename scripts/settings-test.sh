@@ -10,9 +10,10 @@ sh_ settings get secure enabled_accessibility_services | grep -q "$PKG" \
   && pass "Screen guard is on" || fail "Screen guard is on" "$(sh_ settings get secure enabled_accessibility_services)"
 
 sh_ dumpsys user > "$OUT/dumpsys-user-settings.txt"
-for r in no_user_switch no_config_mobile_networks no_bluetooth_sharing no_config_tethering no_apps_control no_modify_accounts no_factory_reset no_add_user no_config_vpn disallow_config_private_dns no_config_date_time no_install_unknown_sources no_network_reset no_config_credentials; do
+for r in no_user_switch no_config_mobile_networks no_bluetooth_sharing no_config_tethering no_apps_control no_factory_reset no_add_user no_config_vpn disallow_config_private_dns no_config_date_time no_install_unknown_sources no_network_reset no_config_credentials; do
   grep -qw "$r" "$OUT/dumpsys-user-settings.txt" && pass "Settings lock: $r" || fail "Settings lock: $r" "not set"
 done
+grep -qw no_modify_accounts "$OUT/dumpsys-user-settings.txt" && fail "Accounts can be added in Settings" "no_modify_accounts is set" || pass "Accounts can be added in Settings (no_modify_accounts not set)"
 st=$(sh_ dumpsys package com.android.settings | grep -m1 -o "hidden=[a-z]*")
 [ "$st" = "hidden=false" ] && pass "Settings app is not hidden" || fail "Settings app is not hidden" "$st"
 
@@ -52,8 +53,6 @@ for ROUND in 1 2 3; do
   risky_open "Play Store's info page" -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:com.android.vending
   risky_open "Default apps" -a android.settings.MANAGE_DEFAULT_APPS_SETTINGS
   risky_open "Home app" -a android.settings.HOME_SETTINGS
-  risky_open "Accounts" -a android.settings.SYNC_SETTINGS
-  risky_open "Add account" -a android.settings.ADD_ACCOUNT_SETTINGS
   risky_open "Developer options" -a android.settings.APPLICATION_DEVELOPMENT_SETTINGS
   risky_open "Users" -a android.settings.USER_SETTINGS
   risky_open "VPN" -a android.settings.VPN_SETTINGS
@@ -68,7 +67,6 @@ for ROUND in 1 2 3; do
   risky_open "Factory reset" -n com.android.settings/.Settings\$FactoryResetActivity
   risky_tap "Accessibility"
   risky_tap "Apps"
-  risky_tap "Passwords"
 done
 
 safe_open "Main screen" -a android.settings.SETTINGS

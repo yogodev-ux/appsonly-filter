@@ -173,10 +173,8 @@ class MainActivity : Activity() {
     // ---------- state 3: locked home screen ----------
 
     private fun showHome(cfg: LockConfig) {
-        // The phone's real Settings app is a normal icon; our own screen is only for adding a
-        // Google account (account changes are locked in the real Settings).
-        val entries = listOf(AppEntry(SETTINGS_TILE, "Google account")) +
-            LockPolicy.visiblePackages(this, cfg)
+        // The phone's real Settings app is a normal icon (accounts are added there too).
+        val entries = LockPolicy.visiblePackages(this, cfg)
                 .filter { packageManager.getLaunchIntentForPackage(it) != null }
                 .map { AppEntry.of(this, it) }
                 .sortedBy { it.label.lowercase() }

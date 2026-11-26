@@ -95,7 +95,7 @@ is_ok_pkg() { case "$OK_PKGS" in *" $1 "*) return 0;; esac; return 1; }
 # still be allowed) and the emergency dialer (emergency calls must always work).
 # The phone's real Settings app is allowed, except its risky screens (same list as the
 # screen guard's SETTINGS_DENY_CLASS); those must be closed.
-SETTINGS_DENY='(Accessibility|ApplicationDetails|InstalledAppDetails|AppInfo|ManageApplications|AllApplications|DefaultApp|HomeSettings|AccountSettings|AccountDashboard|AccountSync|DeviceAdmin|DevelopmentSettings|Development|FactoryReset|MainClear|ResetDashboard|UserSettings|Users|VpnSettings|Vpn|PrivateDns|DateTime|SpecialAccess|ManageExternalSources|ManageAppExternalSources|Overlay|UsageAccess|NotificationAccess|WriteSettings|ZenAccess|PictureInPicture|ChangeWifiState|ManageExternalStorage|TrustAgent|Premium|DataSaver|Captioning|TextToSpeech|Tts|ToggleScreen|TalkBack|SelectToSpeak|AppLocale|Autofill|ManageAssist|Gestures|AssistGesture)'
+SETTINGS_DENY='(Accessibility|ApplicationDetails|InstalledAppDetails|AppInfo|ManageApplications|AllApplications|DefaultApp|HomeSettings|DeviceAdmin|DevelopmentSettings|Development|FactoryReset|MainClear|ResetDashboard|UserSettings|Users|VpnSettings|Vpn|PrivateDns|DateTime|SpecialAccess|ManageExternalSources|ManageAppExternalSources|Overlay|UsageAccess|NotificationAccess|WriteSettings|ZenAccess|PictureInPicture|ChangeWifiState|ManageExternalStorage|TrustAgent|Premium|DataSaver|Captioning|TextToSpeech|Tts|ToggleScreen|TalkBack|SelectToSpeak|AppLocale|Autofill|ManageAssist|Gestures|AssistGesture)'
 is_ok_top() {
   case "$1" in
     com.android.settings/*) echo "${1##*.}" | grep -qE "$SETTINGS_DENY" && return 1; return 0;;

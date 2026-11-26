@@ -86,7 +86,7 @@ shot 01-home
 
 echo "== restrictions"
 sh_ dumpsys user > "$OUT/dumpsys-user.txt"
-for r in no_install_unknown_sources no_uninstall_apps no_factory_reset no_safe_boot no_add_user no_modify_accounts no_config_vpn no_config_date_time disallow_config_private_dns; do
+for r in no_install_unknown_sources no_uninstall_apps no_factory_reset no_safe_boot no_add_user no_config_vpn no_config_date_time disallow_config_private_dns; do
   grep -q "$r" "$OUT/dumpsys-user.txt" && pass "Restriction $r set" || fail "Restriction $r set"
 done
 grep -qw no_install_apps "$OUT/dumpsys-user.txt" && fail "Play updates not blocked (no_install_apps absent)" || pass "Play updates not blocked (no_install_apps absent)"
@@ -135,9 +135,6 @@ tap_text() { # tap the first on-screen element whose text starts with $1
   set -- $b
   sh_ input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )) >/dev/null
 }
-home
-tap_text "Google account"; sleep 3; shot 02-google-account
-resumed | grep -q "$PKG/.SettingsActivity" && pass "Our Google account screen opens" || fail "Our Google account screen opens" "$(resumed)"
 home
 tap_text "Settings"; sleep 4; shot 03-real-settings
 resumed | grep -q "com.android.settings/" && pass "The phone's real Settings app opens from the home screen" || fail "The phone's real Settings app opens from the home screen" "$(resumed)"
@@ -245,66 +242,33 @@ sleep 3
 N=$(grep -c "granted android.permission.ACCESS_FINE_LOCATION" "$OUT/logcat.txt")
 [ "$N" -le 1 ] && pass "Location permission granted once (no repeated 'has location access' pop-up)" || fail "Location permission granted once (no repeated 'has location access' pop-up)" "granted $N times"
 
-echo "== Google sign-in always has a way back"
-signin_state() { sh_ am broadcast -n $PKG/.dev.DevSignInReceiver "$@" | grep -o 'active=[a-z]*'; }
-signin_state --el timeout_ms 30000 >/dev/null
-ours() { resumed | grep -q "$PKG"; }
-open_signin() { # from home: "Google account" -> "Add Google account"
-  home; tap_text "Google account"; sleep 3
-  for i in 1 2 3 4 5 6; do
-    if tap_text "Add Google account"; then
-      # Wait (up to 30 s; the emulator can be slow) until Google's page is in front,
-      # or the sign-in has already ended and we are back.
-      local seen=0
-      for j in $(seq 1 15); do
-        sleep 2
-        ours || return 0
-        st=$(signin_state)
-        [ "$st" = "active=true" ] && seen=1
-        [ "$st" = "active=false" ] && [ $seen = 1 ] && return 0
-      done
-      return 0
-    fi
-    sh_ input swipe 540 1900 540 700 300 >/dev/null; sleep 1
-  done
+echo "== adding a Google account from the phone's real Settings app"
+ok_signin_top() { resumed | grep -qE "com.google.android.gms/|com.android.settings/|$PKG/|com.android.systemui"; }
+home; sh_ am start -a android.settings.SYNC_SETTINGS >/dev/null; sleep 3; shot 07-accounts
+resumed | grep -q "com.android.settings/" && pass "Settings > Accounts opens" || fail "Settings > Accounts opens" "$(resumed)"
+open_signin() { # Settings > Accounts > Add account > Google
+  home; sh_ am start -a android.settings.ADD_ACCOUNT_SETTINGS --esa account_types com.google >/dev/null
+  for j in $(seq 1 15); do sleep 2; resumed | grep -q "com.google.android.gms/" && return 0; done
   return 1
 }
-open_signin; SIGNIN_FOUND=$?
-echo "top after tapping Add Google account: $(resumed)"
-grep -E "Google sign-in|AccountManager|E/AppsOnly|W/AppsOnly" "$OUT/logcat.txt" | grep -v "could not hide" | tail -15
-if [ $SIGNIN_FOUND != 0 ]; then
-  fail "Add Google account button found" "not on Google account screen"
-elif ours; then
-  # Google closed its page by itself (e.g. no internet): we must be back on our screen.
-  shot 07-signin
-  pass "Sign-in ended by Google: back on our screen"
-  [ "$(signin_state)" = "active=false" ] && pass "Account changes blocked again after sign-in" || fail "Account changes blocked again after sign-in" "$(signin_state)"
+if open_signin; then
+  shot 08-signin
+  pass "Google sign-in opens from Settings ($(resumed | grep -oE 'com\.google[^ }]*' | head -1))"
+  # Links inside Google's sign-in must not lead anywhere outside it (no browser, no other app).
+  for link in "Learn more" "Forgot email" "Create account" "Help" "Privacy" "Terms"; do
+    if tap_text "$link"; then
+      sleep 4
+      ok_signin_top && pass "Sign-in link '$link' stays inside sign-in/Settings" || fail "Sign-in link '$link' stays inside sign-in/Settings" "$(resumed)"
+      resumed | grep -q "com.google.android.gms/" || open_signin >/dev/null
+    fi
+  done
+  # Home always leaves the sign-in (a Google page still starting may need a second press).
+  home; sleep 2
+  resumed | grep -q "$PKG" || { echo "INFO: first Home press landed while a Google page was starting: $(resumed)"; home; sleep 2; }
+  resumed | grep -q "$PKG" && pass "Home button leaves the sign-in" || fail "Home button leaves the sign-in" "$(resumed)"
 else
-  shot 07-signin
-  pass "Google sign-in opens ($(resumed | grep -oE 'com\.google[^/ ]*' | head -1))"
-  sh_ dumpsys notification --noredact | grep -q "Google sign-in is open" \
-    && pass "'Back to home' notification shown during sign-in" || fail "'Back to home' notification shown during sign-in"
-  # 1) The notification takes you back.
-  sh_ cmd statusbar expand-notifications >/dev/null; sleep 3; shot 08-signin-notification
-  tap_text "Back to home" || tap_text "Stuck?" || tap_text "Google sign-in is open"; sleep 5
-  ours && pass "Tapping the notification returns to our screen" || fail "Tapping the notification returns to our screen" "$(resumed)"
-  [ "$(signin_state)" = "active=false" ] && pass "Account changes blocked again after leaving sign-in" || fail "Account changes blocked again after leaving sign-in" "$(signin_state)"
-  sh_ cmd statusbar collapse >/dev/null
-  # 2) Home works while the sign-in is open.
-  if open_signin && ! ours; then
-    home; sleep 2
-    # A Google page that was still starting can land on top of the first press; a person
-    # would just press Home again, so that still counts (the second press must work).
-    ours || { echo "INFO: first Home press landed while a Google page was starting: $(resumed)"; home; sleep 2; }
-    ours && pass "Home button leaves the sign-in" || fail "Home button leaves the sign-in" "$(resumed)"
-    [ "$(signin_state)" = "active=false" ] && pass "Account changes blocked again after Home" || fail "Account changes blocked again after Home" "$(signin_state)"
-  fi
-  # 3) Left alone, the sign-in closes by itself after the time limit (30 s in this test).
-  if open_signin && ! ours; then
-    sleep 35; shot 09-signin-timeout
-    ours && pass "Sign-in closes by itself after the time limit" || fail "Sign-in closes by itself after the time limit" "$(resumed)"
-    [ "$(signin_state)" = "active=false" ] && pass "Account changes blocked again after time limit" || fail "Account changes blocked again after time limit" "$(signin_state)"
-  fi
+  shot 08-signin
+  fail "Google sign-in opens from Settings" "$(resumed)"
 fi
 home
 

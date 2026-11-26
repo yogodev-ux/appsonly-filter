@@ -88,7 +88,7 @@ class ScreenGuard : AccessibilityService() {
          */
         val SETTINGS_DENY_CLASS = Regex(
             """(Accessibility|ApplicationDetails|InstalledAppDetails|AppInfo|ManageApplications|""" +
-                """AllApplications|DefaultApp|HomeSettings|AccountSettings|AccountDashboard|AccountSync|""" +
+                """AllApplications|DefaultApp|HomeSettings|""" +
                 """DeviceAdmin|DevelopmentSettings|Development|FactoryReset|MainClear|ResetDashboard|""" +
                 """UserSettings|Users|VpnSettings|Vpn|PrivateDns|DateTime|SpecialAccess|ManageExternalSources|""" +
                 """ManageAppExternalSources|Overlay|UsageAccess|NotificationAccess|WriteSettings|ZenAccess|""" +
@@ -102,7 +102,7 @@ class ScreenGuard : AccessibilityService() {
             "display over other apps", "usage access", "install unknown apps", "notification access",
             "device & app notifications", "modify system settings", "all files access", "alarms & reminders",
             "picture-in-picture", "wi-fi control", "premium sms access", "unrestricted data",
-            "passwords & accounts", "passwords, passkeys & accounts", "accounts", "autofill service",
+            "autofill service",
             "device admin apps", "trust agents", "developer options", "reset options", "erase all data (factory reset)",
             "multiple users", "users", "vpn", "private dns", "date & time", "text-to-speech output",
             "app languages", "digital assistant app", "default digital assistant app",
@@ -114,7 +114,7 @@ class ScreenGuard : AccessibilityService() {
             return t.isNotEmpty() && t in SETTINGS_DENY_TITLE
         }
 
-        /** Adding an account, allowed only while our own "Add Google account" is open. */
+        /** Google's sign-in screens (adding an account from the real Settings app). */
         private val ADD_ACCOUNT = Regex("""com\.google\.android\.gms\.auth\.uiflows\.addaccount\.""")
 
         private class Allowed(val apps: Set<String>, val keyboards: Set<String>)
@@ -137,7 +137,7 @@ class ScreenGuard : AccessibilityService() {
             if (!isActivity(ctx, pkg, cls)) return false // pop-ups, overlays, the keyboard itself, the shade
             if (pkg in a.keyboards) return true // keyboard settings screens
             if (pkg in HELPERS) {
-                if (ADD_ACCOUNT.containsMatchIn(cls)) return !AccountFlow.active
+                if (ADD_ACCOUNT.containsMatchIn(cls)) return false // Google sign-in from Settings > Accounts
                 return HELPER_DENY.any { it.containsMatchIn(cls) }
             }
             return true

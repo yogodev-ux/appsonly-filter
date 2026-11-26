@@ -28,7 +28,6 @@ object LockPolicy {
         UserManager.DISALLOW_SAFE_BOOT,
         UserManager.DISALLOW_ADD_USER,
         UserManager.DISALLOW_REMOVE_USER,
-        UserManager.DISALLOW_MODIFY_ACCOUNTS,
         UserManager.DISALLOW_CONFIG_VPN,
         UserManager.DISALLOW_CONFIG_DATE_TIME,
         UserManager.DISALLOW_CONFIG_CREDENTIALS,
@@ -88,12 +87,13 @@ object LockPolicy {
         val dpm = dpm(ctx)
         val admin = AdminReceiver.component(ctx)
 
-        // 1. User restrictions. Account changes stay allowed only while the Google
-        //    sign-in started from our Settings screen is open.
+        // 1. User restrictions.
         for (r in activeRestrictions(ctx)) {
-            if (r == UserManager.DISALLOW_MODIFY_ACCOUNTS && AccountFlow.active) continue
             try { dpm.addUserRestriction(admin, r) } catch (e: Exception) { Log.w(TAG, "restriction $r", e) }
         }
+        // Accounts are added and removed in the phone's real Settings app (Google's own
+        // sign-in). Older versions blocked this; lift that block.
+        try { dpm.clearUserRestriction(admin, UserManager.DISALLOW_MODIFY_ACCOUNTS) } catch (e: Exception) { Log.w(TAG, "accounts", e) }
 
         // 2. We are the only home screen, and we can't be uninstalled.
         setAsHome(ctx, dpm, admin)
