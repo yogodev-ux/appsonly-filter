@@ -285,10 +285,25 @@ if open_signin; then
       resumed | grep -q "com.google.android.gms/" || open_signin >/dev/null
     fi
   done
+  # While the sign-in is open, Play services may open its own windows; its other screens
+  # (Google settings, Google Account, Help with web pages) must still be closed.
+  lock_task_pkgs() { sh_ dumpsys device_policy | grep -m1 -iE "lockTaskPackages|lock-task-packages" ; }
+  lock_task_pkgs | grep -q com.google.android.gms && pass "Play services allowed during the sign-in" || echo "INFO: lock task packages during sign-in: $(lock_task_pkgs)"
+  for c in com.google.android.gms/.app.settings.GoogleSettingsLink \
+           com.google.android.gms/.googlesettings.ui.GoogleSettingsActivity \
+           com.google.android.gms/.accountsettings.mg.ui.main.MainActivity \
+           com.google.android.gms/.googlehelp.helpactivities.HelpActivity; do
+    sh_ am start -f 0x10000000 -n "$c" >/dev/null 2>&1
+    cls=${c##*/}; ok=0; for k in 1 2 3; do sleep 2; resumed | grep -qF "${cls#.}" || { ok=1; break; }; done
+    [ $ok = 1 ] && pass "During sign-in, $c is closed" || { shot "signin-window-$(echo ${c##*.})"; fail "During sign-in, $c is closed" "$(resumed)"; }
+    resumed | grep -q "com.google.android.gms/" || open_signin >/dev/null
+  done
   # Home always leaves the sign-in (a Google page still starting may need a second press).
   home; sleep 2
   resumed | grep -q "$PKG" || { echo "INFO: first Home press landed while a Google page was starting: $(resumed)"; home; sleep 2; }
   resumed | grep -q "$PKG" && pass "Home button leaves the sign-in" || fail "Home button leaves the sign-in" "$(resumed)"
+  sleep 2
+  lock_task_pkgs | grep -q com.google.android.gms && fail "Play services not allowed again after leaving the sign-in" "$(lock_task_pkgs)" || pass "Play services not allowed again after leaving the sign-in"
 else
   shot 08-signin
   fail "Google sign-in opens from Settings" "$(resumed)"
