@@ -38,7 +38,7 @@ safe_open() { # name, am start args...
 risky_tap() { # entry text: open Settings, scroll to it, tap it; the guard must send us home
   local try found ok=0
   for try in 1 2 3; do
-    home; sh_ am start -a android.settings.SETTINGS >/dev/null; sleep 3
+    home; sh_ am force-stop com.android.settings; sh_ am start -a android.settings.SETTINGS >/dev/null; sleep 3
     found=0
     for i in 1 2 3 4 5 6 7; do
       tap_text "$1" && { found=1; break; }
@@ -51,12 +51,19 @@ risky_tap() { # entry text: open Settings, scroll to it, tap it; the guard must 
     resumed | grep -qE "com.android.settings/.*(\.Settings|homepage)" || break
   done
   if [ $ok = 1 ]; then pass "Settings: tapping '$1' is closed (round $ROUND)"
-  else shot "settings-tap-$ROUND-$(echo "$1" | tr ' /&' '___')"; fail "Settings: tapping '$1' is closed (round $ROUND)" "$(resumed)"; fi
+  else shot "settings-tap-$ROUND-$(echo "$1" | tr ' /&' '___')"; fail "Settings: tapping '$1' is closed (round $ROUND)" "$(resumed)"; screen_texts; fi
+}
+
+# On a failure, show what was on screen (artifacts can't always be opened).
+screen_texts() {
+  sh_ uiautomator dump /sdcard/ui.xml >/dev/null
+  echo "   on screen: $(sh_ cat /sdcard/ui.xml | grep -oE '(text|content-desc)="[^"]+"' | cut -d'"' -f2 | head -25 | tr '\n' '|')"
+  echo "   guard: $(grep -E 'Settings screen:|Screen guard closed|guard saw' "$OUT/logcat.txt" | tail -4 | sed 's/.*AppsOnly[^:]*: //' | tr '\n' '|')"
 }
 
 # Two levels: open a safe section, then tap a risky entry inside it.
 risky_tap_in() { # section entry
-  home; sh_ am start -a android.settings.SETTINGS >/dev/null; sleep 3
+  home; sh_ am force-stop com.android.settings; sh_ am start -a android.settings.SETTINGS >/dev/null; sleep 3
   local found=0 ok=0
   for i in 1 2 3 4 5 6 7 8; do tap_text "$1" && { found=1; break; }; sh_ input swipe 540 1800 540 800 300 >/dev/null; sleep 1; done
   [ $found = 0 ] && { echo "INFO: Settings section '$1' not found"; return; }

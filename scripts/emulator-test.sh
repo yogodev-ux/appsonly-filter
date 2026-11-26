@@ -266,9 +266,11 @@ open_signin() { # Settings > Accounts > Add account > Google
   for j in $(seq 1 10); do sleep 2; resumed | grep -q "com.google.android.gms/" && return 0; done
   # Some Android versions land back on the Accounts list; tap through it like a person would.
   echo "INFO: direct link ended on $(resumed | grep -oE 'com\.[^ }]*' | head -1); tapping Add account > Google"
-  home; sh_ am start -a android.settings.SYNC_SETTINGS >/dev/null; sleep 3
+  home; sh_ am force-stop com.android.settings; sh_ am start -a android.settings.SYNC_SETTINGS >/dev/null; sleep 4
   for i in 1 2 3 4; do tap_text "Add account" && break; sh_ input swipe 540 1800 540 800 300 >/dev/null; sleep 1; done
-  sleep 3; tap_text "Google" >/dev/null
+  sleep 4; sh_ uiautomator dump /sdcard/ui.xml >/dev/null
+  echo "INFO: account types offered: $(sh_ cat /sdcard/ui.xml | grep -oE 'text="[^"]+"' | cut -d'"' -f2 | head -15 | tr '\n' '|')"
+  tap_text "Google" >/dev/null
   for j in $(seq 1 15); do sleep 2; resumed | grep -q "com.google.android.gms/" && return 0; done
   return 1
 }
@@ -290,6 +292,7 @@ if open_signin; then
 else
   shot 08-signin
   fail "Google sign-in opens from Settings" "$(resumed)"
+  echo "   guard: $(grep -E 'Screen guard closed|guard saw com.google|AccountManager|addAccount' "$OUT/logcat.txt" | tail -8 | sed 's/.*: //' | tr '\n' '|')"
 fi
 home
 
