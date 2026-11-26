@@ -182,6 +182,13 @@ app/src/debug/      developer unlock (debug builds only)
 CI packages it as `AppsOnlySetup-windows` (artifact of the "Windows installer" workflow): a folder with
 `AppsOnlySetup.exe`, its own Java, `platform-tools` (adb) and `apps-only.apk`. Nothing to install on the PC.
 
+`apps-only.apk` in that package is always the **signed release** app, never the test build. CI makes it
+only when these repository secrets are set: `RELEASE_KEYSTORE_BASE64` (the release keystore, base64),
+`RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`, `LICENSE_PUBLIC_KEY` and
+`LICENSE_SERVER`. Without them the package is still built and smoke-tested but not uploaded. A release
+build refuses to build at all without the real license key, the real server and the release keystore,
+so it can never fall back to the test key in `server/test-keys.json`.
+
 What it does, in order:
 1. Finds exactly one phone with USB debugging allowed (tells the person what to do if not).
 2. Checks Android 10+, the model list (`installer/src/main/resources/supported-models.json`),
