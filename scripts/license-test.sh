@@ -53,7 +53,9 @@ L=$(lic); echo "license: $L"
 echo "$L" | grep -q "paid=true" && [ "$(hidden $APPOK)" = "hidden=false" ] && pass "Stays unlocked with no server or internet" || fail "Stays unlocked with no server or internet" "$L"
 
 echo "== staff blocks it again (e.g. refund)"
-( cd server && ADMIN_TOKEN=ci-admin DATA_FILE=../$OUT/server-data.json nohup node src/node-server.js </dev/null >> "../$OUT/server.log" 2>&1 & echo $! > "../$OUT/server.pid" )
+# Started directly (not in a subshell) so $! is the server itself and nothing else keeps running.
+ADMIN_TOKEN=ci-admin DATA_FILE="$OUT/server-data.json" nohup node server/src/node-server.js </dev/null >> "$OUT/server.log" 2>&1 &
+echo $! > "$OUT/server.pid"
 for i in $(seq 1 20); do curl -sf $SERVER/health >/dev/null && break; sleep 0.5; done
 ID=$(curl -s -H "authorization: Bearer ci-admin" $SERVER/v1/admin/devices | grep -o '"id":"dev_[^"]*"' | head -1 | cut -d'"' -f4)
 curl -s -o /dev/null -X POST -H "authorization: Bearer ci-admin" -H "content-type: application/json" -d '{"status":"unpaid"}' "$SERVER/v1/admin/devices/$ID/status"
