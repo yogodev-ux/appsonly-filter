@@ -35,6 +35,7 @@ class FilterVpnService : VpnService() {
     @Volatile private var tun: ParcelFileDescriptor? = null
     private var reader: Thread? = null
     private val pool = Executors.newFixedThreadPool(8)
+    private val debug by lazy { (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 }
 
     override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
         if (tun == null) start()
@@ -87,7 +88,10 @@ class FilterVpnService : VpnService() {
 
     private fun handle(p: ByteArray, out: FileOutputStream) {
         try {
-            val q = Packets.parseUdpIpv4(p) ?: return
+            val q = Packets.parseUdpIpv4(p) ?: run {
+                if (debug) Log.i(TAG, "ignored non-UDP/IPv4 packet: version=${p[0].toInt() shr 4} proto=${if (p.size > 9) p[9].toInt() else -1}")
+                return
+            }
             if (q.dstPort != 53) return
             val host = Dns.questionName(q.payload) ?: return
             val cm = getSystemService(ConnectivityManager::class.java)
@@ -96,10 +100,11 @@ class FilterVpnService : VpnService() {
                     InetSocketAddress(q.src, q.srcPort), InetSocketAddress(q.dst, q.dstPort))
             } catch (e: Exception) { -1 }
 
-            val answer = if (WebFilter.allowed(this, uid, host)) {
+            val ok = WebFilter.allowed(this, uid, host)
+            WebFilter.logLookup(this, uid, host, ok)
+            val answer = if (ok) {
                 forward(q.payload)?.let { Dns.zeroTtl(it) } ?: Dns.failure(q.payload, rcode = 2)
             } else {
-                WebFilter.logBlocked(this, uid, host)
                 Dns.failure(q.payload, rcode = 3) // NXDOMAIN: "no such site"
             }
             val reply = Packets.buildUdpIpv4(q.dst, q.src, q.dstPort, q.srcPort, answer)
@@ -138,7 +143,7 @@ class FilterVpnService : VpnService() {
                     return buf.copyOf(resp.length)
                 }
             } catch (e: Exception) {
-                Log.d(TAG, "upstream $server failed: $e")
+                Log.w(TAG, "upstream $server failed: $e")
             }
         }
         return null

@@ -56,7 +56,7 @@ shot 01-home
 
 echo "== restrictions"
 sh_ dumpsys user > "$OUT/dumpsys-user.txt"
-for r in no_install_unknown_sources no_uninstall_apps no_factory_reset no_safe_boot no_add_user no_modify_accounts no_config_vpn no_config_date_time no_config_private_dns; do
+for r in no_install_unknown_sources no_uninstall_apps no_factory_reset no_safe_boot no_add_user no_modify_accounts no_config_vpn no_config_date_time disallow_config_private_dns; do
   grep -q "$r" "$OUT/dumpsys-user.txt" && pass "Restriction $r set" || fail "Restriction $r set"
 done
 grep -qw no_install_apps "$OUT/dumpsys-user.txt" && fail "Play updates not blocked (no_install_apps absent)" || pass "Play updates not blocked (no_install_apps absent)"
@@ -100,10 +100,17 @@ blocked_open "Wi-Fi settings page" -a android.settings.WIFI_SETTINGS
 blocked_open "Play Store main screen" -n com.android.vending/com.google.android.finsky.activities.MainActivity
 
 echo "== our own screens open"
+tap_text() { # tap the first on-screen element whose text starts with $1
+  sh_ uiautomator dump /sdcard/ui.xml >/dev/null
+  local b; b=$(sh_ cat /sdcard/ui.xml | tr '>' '\n' | grep -m1 "text=\"$1" | grep -o 'bounds="[^"]*"' | grep -oE '[0-9]+' | tr '\n' ' ')
+  [ -z "$b" ] && return 1
+  set -- $b
+  sh_ input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )) >/dev/null
+}
 home
-sh_ am start -n $PKG/.SettingsActivity >/dev/null; sleep 3; shot 02-settings
+tap_text "Settings"; sleep 3; shot 02-settings
 resumed | grep -q "$PKG/.SettingsActivity" && pass "Our Settings screen opens" || fail "Our Settings screen opens" "$(resumed)"
-sh_ am start -n $PKG/.WifiActivity >/dev/null; sleep 4; shot 03-wifi
+tap_text "Wi-Fi networks"; sleep 4; shot 03-wifi
 resumed | grep -q "$PKG/.WifiActivity" && pass "Our Wi-Fi screen opens" || fail "Our Wi-Fi screen opens" "$(resumed)"
 if [ -n "$FIRST_ALLOWED" ]; then
   home
@@ -134,6 +141,10 @@ expect com.android.vending www.wikipedia.org BLOCKED
 
 sleep 20 # let background apps make some lookups
 grep "BLOCKED" "$OUT/logcat.txt" | sed 's/.*BLOCKED/BLOCKED/' | sort | uniq -c | sort -rn > "$OUT/blocked-lookups.txt" || true
+echo "---- web filter log (first 80 lines) ----"
+grep -E "AppsOnlyFilter|AppsOnly" "$OUT/logcat.txt" | head -80
+echo "---- blocked lookups ----"
+head -40 "$OUT/blocked-lookups.txt"
 
 echo "== reboot keeps the lock"
 adb reboot

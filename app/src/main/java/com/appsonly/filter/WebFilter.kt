@@ -95,10 +95,11 @@ object WebFilter {
         return isSystem && r.googleCore.matches(h)
     }
 
-    fun logBlocked(ctx: Context, uid: Int, host: String) {
+    /** Debug builds log every lookup; blocked ones as "BLOCKED". */
+    fun logLookup(ctx: Context, uid: Int, host: String, allowed: Boolean) {
         if ((ctx.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return
-        val who = ctx.packageManager.getPackagesForUid(uid)?.joinToString() ?: "uid $uid"
-        Log.i(TAG, "BLOCKED $host  ($who)")
+        val who = (if (uid >= 0) ctx.packageManager.getPackagesForUid(uid)?.joinToString() else null) ?: "uid $uid"
+        Log.i(TAG, "${if (allowed) "allowed" else "BLOCKED"} $host  ($who)")
     }
 
     /** Make our filter an always-on VPN the customer can't switch off. */
