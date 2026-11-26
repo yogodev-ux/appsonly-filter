@@ -46,12 +46,26 @@ object KioskMode {
     }
 
     /** Called by the home screen whenever it is shown while locked. */
+    private fun bootCount(ctx: Context) =
+        android.provider.Settings.Global.getInt(ctx.contentResolver, android.provider.Settings.Global.BOOT_COUNT, -1)
+
+    private fun prefs(ctx: Context) =
+        ctx.createDeviceProtectedStorageContext().getSharedPreferences("kiosk", Context.MODE_PRIVATE)
+
+    /** True if kiosk mode was on earlier since this boot and is now off (someone turned it off). */
+    fun isOff(activity: Activity): Boolean =
+        activity.getSystemService(ActivityManager::class.java).lockTaskModeState == ActivityManager.LOCK_TASK_MODE_NONE &&
+            prefs(activity).getInt("entered_boot", -2) == bootCount(activity)
+
     fun enter(activity: Activity) {
         val am = activity.getSystemService(ActivityManager::class.java)
         if (am.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE) return
         val dpm = LockPolicy.dpm(activity)
         if (!dpm.isLockTaskPermitted(activity.packageName)) return
-        try { activity.startLockTask() } catch (e: Exception) { Log.w(TAG, "startLockTask", e) }
+        try {
+            activity.startLockTask()
+            prefs(activity).edit().putInt("entered_boot", bootCount(activity)).apply()
+        } catch (e: Exception) { Log.w(TAG, "startLockTask", e) }
     }
 
     fun clear(dpm: DevicePolicyManager, admin: ComponentName) {

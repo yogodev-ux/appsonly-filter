@@ -47,6 +47,9 @@ class MainActivity : Activity() {
             !cfg.locked -> showSetup()
             else -> {
                 showHome(cfg)
+                // Backup for the admin callback: if kiosk mode was switched off behind our
+                // back, record it before turning it on again.
+                if (KioskMode.isOff(this)) TamperLog.record(this, "kiosk_mode_exited", "seen on home screen")
                 KioskMode.enter(this)
                 // Catch anything installed since last time, then refresh the icons.
                 app.enforceAsync { runOnUiThread { if (!isFinishing) showHome(Prefs.load(this)) } }

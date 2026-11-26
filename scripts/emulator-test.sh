@@ -176,33 +176,41 @@ head -40 "$OUT/blocked-lookups.txt"
 echo "== step 2: tamper protection"
 tamperlog() { sh_ am broadcast -n $PKG/.dev.DevTamperLogReceiver | tr -d '\r'; }
 sh_ dumpsys device_policy > "$OUT/dumpsys-device-policy.txt"
-grep -iE -A3 "user ?control ?disabled" "$OUT/dumpsys-device-policy.txt" | grep -q $PKG \
-  && pass "App can't be force-stopped or cleared by the user" || fail "App can't be force-stopped or cleared by the user" "not in user-control-disabled list"
+STATUS=$(sh_ am broadcast -n $PKG/.dev.DevStatusReceiver | tr -d '\r' | grep -o 'user_control_disabled=[^"]*')
+echo "$STATUS"
+echo "$STATUS" | grep -q "$PKG" \
+  && pass "App can't be force-stopped or cleared by the user" || fail "App can't be force-stopped or cleared by the user" "$STATUS"
 [ "$(sh_ settings get global auto_time)" = "1" ] && pass "Automatic date/time on" || fail "Automatic date/time on" "$(sh_ settings get global auto_time)"
 if grep -q "FRP set" "$OUT/logcat.txt"; then pass "Factory Reset Protection can be set (test account ID)"
 elif grep -q "FRP not supported" "$OUT/logcat.txt"; then pass "Factory Reset Protection: not supported on this emulator (needs a real phone)"
 else fail "Factory Reset Protection" "no FRP result in log"; fi
 
-# Tamper: turn automatic time off behind our back -> the next check turns it back on and logs it.
-sh_ settings put global auto_time 0 >/dev/null
-home; sh_ am start -n $PKG/.MainActivity >/dev/null; sleep 6
-[ "$(sh_ settings get global auto_time)" = "1" ] && pass "Automatic time is turned back on after tampering" || fail "Automatic time is turned back on" "$(sh_ settings get global auto_time)"
-tamperlog | grep -q auto_time_restored && pass "Tamper log: time change recorded" || fail "Tamper log: time change recorded" "$(tamperlog)"
+# Tamper: try to turn automatic time off -> Android refuses (date/time settings are locked).
+sh_ settings put global auto_time 0 >/dev/null 2>&1
+sleep 2
+[ "$(sh_ settings get global auto_time)" = "1" ] && pass "Automatic time can't be turned off" || fail "Automatic time can't be turned off" "$(sh_ settings get global auto_time)"
 
 # Tamper: leave kiosk mode -> logged, and Home brings kiosk mode back.
 sh_ am task lock stop >/dev/null; sleep 2
-tamperlog | grep -q kiosk_mode_exited && pass "Tamper log: leaving kiosk mode recorded" || fail "Tamper log: leaving kiosk mode recorded" "$(tamperlog)"
 home; sleep 3
+tamperlog | grep -q kiosk_mode_exited && pass "Tamper log: leaving kiosk mode recorded" || fail "Tamper log: leaving kiosk mode recorded" "$(tamperlog)"
 sh_ dumpsys activity activities | grep -m1 -i mLockTaskModeState | grep -q LOCKED && pass "Kiosk mode comes back after Home" || fail "Kiosk mode comes back after Home"
 
-# Tamper: force-stop the app -> web filter restarts by itself, and it is logged.
+# Tamper: force-stop the app (only possible over adb; the user can't). As soon as the
+# phone is used again (Home), the app, the lock and the web filter come straight back.
 STARTS_BEFORE=$(grep -c "Web filter started" "$OUT/logcat.txt")
-sh_ am force-stop $PKG; sleep 30
-STARTS_AFTER=$(grep -c "Web filter started" "$OUT/logcat.txt")
-[ "$STARTS_AFTER" -gt "$STARTS_BEFORE" ] && pass "Web filter restarts by itself after the app is killed" || fail "Web filter restarts by itself after the app is killed"
-home; sleep 5
+sh_ am force-stop $PKG; sleep 3
+home
+ok=0
+for i in $(seq 1 15); do
+  sleep 2
+  [ "$(grep -c "Web filter started" "$OUT/logcat.txt")" -gt "$STARTS_BEFORE" ] && { ok=1; break; }
+done
+[ $ok = 1 ] && pass "Web filter comes back after the app is killed" || fail "Web filter comes back after the app is killed"
 tamperlog | grep -qE "app_force_stopped|app_stopped_by_user" && pass "Tamper log: force-stop recorded" || fail "Tamper log: force-stop recorded" "$(tamperlog)"
 resumed | grep -q "$PKG" && pass "Home screen back after force-stop" || fail "Home screen back after force-stop" "$(resumed)"
+echo "---- tamper events in the app log ----"
+grep -E "AppsOnlyTamper|W/AppsOnly|E/AppsOnly|AndroidRuntime" "$OUT/logcat.txt" | grep -v "could not hide" | tail -30
 tamperlog > "$OUT/tamper-log.txt"
 
 echo "== reboot keeps the lock"

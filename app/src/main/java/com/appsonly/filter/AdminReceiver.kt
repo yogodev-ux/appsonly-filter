@@ -16,7 +16,7 @@ class AdminReceiver : DeviceAdminReceiver() {
     }
 
     override fun onLockTaskModeExiting(context: Context, intent: Intent) {
-        if (Prefs.load(context).locked) TamperLog.record(context, "kiosk_mode_exited")
+        if (Prefs.load(context).locked) TamperLog.record(context, "kiosk_mode_exited", "admin callback")
     }
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {

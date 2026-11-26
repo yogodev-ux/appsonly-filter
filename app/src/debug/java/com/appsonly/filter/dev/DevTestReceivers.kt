@@ -67,3 +67,18 @@ class DevTamperLogReceiver : BroadcastReceiver() {
         resultData = TamperLog.read(context).takeLast(30).joinToString(" | ")
     }
 }
+
+/**
+ * Reports protection state the shell can't read reliably on every Android version:
+ *   adb shell am broadcast -n com.appsonly.filter/.dev.DevStatusReceiver
+ */
+class DevStatusReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val dpm = LockPolicy.dpm(context)
+        val admin = AdminReceiver.component(context)
+        val userControl = if (android.os.Build.VERSION.SDK_INT >= 30)
+            try { dpm.getUserControlDisabledPackages(admin).joinToString(",") } catch (e: Exception) { "error:${e.javaClass.simpleName}" }
+        else "unsupported"
+        resultData = "user_control_disabled=$userControl"
+    }
+}
