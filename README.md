@@ -196,3 +196,24 @@ What it does, in order:
 
 Running it on a phone that's already set up just updates the app.
 Command line (used by CI): `java -jar apps-only-setup.jar --cli [--check] [--yes] [--apk FILE] [--adb FILE]`.
+
+## Step 4: license server and payment gate
+
+Setup is free; after locking, **every app stays closed until the phone is paid**. The home
+screen shows a web address and a phone code (like `AOS-7K3D-9QXW`) to pay from a computer or
+another phone (the phone itself can't browse), plus Settings for Wi-Fi. The phone checks every
+30 seconds while that screen is open, and every 15 minutes in the background.
+
+- `server/` is the server (Node 18+, no dependencies, Web Fetch API so it can move to Cloudflare
+  Workers or Firebase; hosting is chosen later). `cd server && npm test`, `npm start`.
+- The server signs a small license (device id + status) with ECDSA P-256. The app only trusts
+  licenses that verify with the public key built into it, and only for its own device id.
+- Once paid, the phone stays unlocked with no internet. Staff can set a phone back to unpaid
+  (for example after a refund) through the admin API, which the step 5 portal will use.
+- Payments: `PAYMENTS=test` (default, a "Mark as paid" button) or `PAYMENTS=stripe`
+  (Stripe Checkout + signed webhook).
+- `server/test-keys.json` is a TEST key pair, committed on purpose like the debug keystore.
+  Debug builds trust it and talk to `http://10.0.2.2:8787` (the PC, seen from the emulator).
+  Release builds need `-PlicenseServer=https://... -PlicensePublicKey=...` and the real private
+  key in the server's `LICENSE_PRIVATE_JWK` secret (`npm run keys` makes a pair).
+- Test builds can skip payment with `--ez paid true` on the dev lock broadcast.

@@ -1,0 +1,15 @@
+{
+  "_comment": "TEST KEYS ONLY, committed on purpose (like the debug keystore). Used by the local/CI server and by debug builds of the app. Production uses a different key pair kept in the hosting secrets.",
+  "privateJwk": {
+    "key_ops": [
+      "sign"
+    ],
+    "ext": true,
+    "kty": "EC",
+    "x": "YA7_AYYnnR0AonKsE0SwWxIAB_Xx1Gg5oiY4ecEl9vM",
+    "y": "QxC5tS_QbMuitAgDRU06Y2STirRFbGQhhvFO_2V2rq4",
+    "crv": "P-256",
+    "d": "qCZ3ZrXIBChudFZ9PWd32OL5Xj6YXvqhgM0Zj_rzUMg"
+  },
+  "publicSpkiB64": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYA7/AYYnnR0AonKsE0SwWxIAB/Xx1Gg5oiY4ecEl9vNDELm1L9Bsy6K0CANFTTpjZJOKtEVsZCGG8U7/ZXaurg=="
+}

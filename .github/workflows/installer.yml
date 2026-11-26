@@ -56,6 +56,10 @@ jobs:
           target: playstore
           arch: x86_64
           profile: pixel_6
+          # More memory and cores than the default, so the system doesn't stall
+          # ("System UI isn't responding") on the shared CI machine.
+          ram-size: 4096M
+          cores: 4
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           script: bash scripts/installer-test.sh inputs/app/build/outputs/apk/debug/app-debug.apk inputs/testapps/fakeaccount/build/outputs/apk/debug/fakeaccount-debug.apk inputs/installer/build/libs/apps-only-setup.jar

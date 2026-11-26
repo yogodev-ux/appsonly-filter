@@ -41,6 +41,8 @@ class FilterApp : Application() {
         }
         registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
         enforceAsync()
+        // Step 4: keep the license fresh (also activates the phone with the server the first time).
+        if (Prefs.load(this).locked) worker.execute { if (License.refresh(this)) LockPolicy.enforce(this) }
     }
 
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
