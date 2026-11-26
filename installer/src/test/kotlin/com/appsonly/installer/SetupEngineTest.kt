@@ -96,6 +96,8 @@ class SetupEngineTest {
         val log = File(tmp, "logs").listFiles()!!.single().readText()
         assertFalse(log.contains("someone@gmail.com"), "account names must never be logged")
         assertTrue(log.contains("RESULT success"))
+        assertTrue(adb.calls.any { it == "shell pm grant com.appsonly.filter android.permission.WRITE_SECURE_SETTINGS" },
+            "the screen guard must be allowed")
     }
 
     @Test fun appsComeBackOnEvenWhenDpmFails() {

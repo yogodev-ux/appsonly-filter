@@ -15,8 +15,14 @@ class AdminReceiver : DeviceAdminReceiver() {
         TamperLog.record(context, "wrong_pin_entered")
     }
 
+    override fun onLockTaskModeEntering(context: Context, intent: Intent, pkg: String) {
+        if (Prefs.load(context).locked) KioskMode.setShadeAllowed(context, true)
+    }
+
     override fun onLockTaskModeExiting(context: Context, intent: Intent) {
-        if (Prefs.load(context).locked) TamperLog.record(context, "kiosk_mode_exited", "admin callback")
+        if (!Prefs.load(context).locked) return
+        KioskMode.setShadeAllowed(context, false)
+        TamperLog.record(context, "kiosk_mode_exited", "admin callback")
     }
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
