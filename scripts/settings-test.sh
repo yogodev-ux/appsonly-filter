@@ -10,20 +10,22 @@ sh_ settings get secure enabled_accessibility_services | grep -q "$PKG" \
   && pass "Screen guard is on" || fail "Screen guard is on" "$(sh_ settings get secure enabled_accessibility_services)"
 
 sh_ dumpsys user > "$OUT/dumpsys-user-settings.txt"
-for r in no_user_switch no_config_mobile_networks no_bluetooth_sharing no_config_tethering no_apps_control no_factory_reset no_add_user no_config_vpn disallow_config_private_dns no_config_date_time no_install_unknown_sources no_network_reset no_config_credentials; do
+for r in no_user_switch no_config_mobile_networks no_bluetooth_sharing no_config_tethering no_control_apps no_factory_reset no_add_user no_config_vpn disallow_config_private_dns no_config_date_time no_install_unknown_sources no_network_reset no_config_credentials; do
   grep -qw "$r" "$OUT/dumpsys-user-settings.txt" && pass "Settings lock: $r" || fail "Settings lock: $r" "not set"
 done
 grep -qw no_modify_accounts "$OUT/dumpsys-user-settings.txt" && fail "Accounts can be added in Settings" "no_modify_accounts is set" || pass "Accounts can be added in Settings (no_modify_accounts not set)"
 st=$(sh_ dumpsys package com.android.settings | grep -m1 -o "hidden=[a-z]*")
 [ "$st" = "hidden=false" ] && pass "Settings app is not hidden" || fail "Settings app is not hidden" "$st"
 
-# A risky screen counts as locked if we end up back home, or on Android's
-# "blocked by your organization" message.
-locked_top() { resumed | grep -qE "$PKG/|ActionDisabledByAdmin|AdminSupport|ShowAdminSupport"; }
+# A risky screen counts as locked if we end up back home, on Android's "blocked by your
+# organization" message, or on the Settings main page (Settings refused the deep link).
+# The guard can take a few seconds on the slow emulator, so wait up to 10 s.
+locked_now() { resumed | grep -qE "$PKG/|ActionDisabledByAdmin|AdminSupport|ShowAdminSupport|com.android.settings/(\.|com\.android\.settings\.)(Settings|homepage\.[A-Za-z]*)[} ]"; }
+locked_top() { for k in 1 2 3 4 5; do locked_now && return 0; sleep 2; done; return 1; }
 
 risky_open() { # name, am start args...
   local name=$1; shift
-  home; sh_ am start "$@" >/dev/null 2>&1; sleep 3
+  home; sh_ am start "$@" >/dev/null 2>&1; sleep 2
   if locked_top; then pass "Settings: $name is locked (round $ROUND)"
   else shot "settings-risky-$ROUND-$(echo "$name" | tr ' /&' '___')"; fail "Settings: $name is locked (round $ROUND)" "$(resumed)"; fi
 }
@@ -33,17 +35,37 @@ safe_open() { # name, am start args...
   resumed | grep -q "com.android.settings/" && pass "Settings: $name opens" || fail "Settings: $name opens" "$(resumed)"
 }
 # Tap through Settings like a person: open Settings, scroll to an entry, tap it.
-risky_tap() { # entry text
-  home; sh_ am start -a android.settings.SETTINGS >/dev/null; sleep 3
-  local found=0
-  for i in 1 2 3 4 5 6 7; do
-    tap_text "$1" && { found=1; break; }
-    sh_ input swipe 540 1800 540 800 300 >/dev/null; sleep 1
+risky_tap() { # entry text: open Settings, scroll to it, tap it; the guard must send us home
+  local try found ok=0
+  for try in 1 2; do
+    home; sh_ am start -a android.settings.SETTINGS >/dev/null; sleep 3
+    found=0
+    for i in 1 2 3 4 5 6 7; do
+      tap_text "$1" && { found=1; break; }
+      sh_ input swipe 540 1800 540 800 300 >/dev/null; sleep 1
+    done
+    if [ $found = 0 ]; then echo "INFO: Settings entry '$1' not found on this phone"; return; fi
+    for k in 1 2 3 4 5; do sleep 2; resumed | grep -q "$PKG/" && { ok=1; break; }; done
+    [ $ok = 1 ] && break
+    # Still on the Settings main page: the tap didn't register (slow emulator); try again.
+    resumed | grep -qE "com.android.settings/.*(\.Settings|homepage)" || break
   done
-  if [ $found = 0 ]; then echo "INFO: Settings entry '$1' not found on this phone"; return; fi
-  sleep 3
-  if locked_top; then pass "Settings: tapping '$1' is closed (round $ROUND)"
+  if [ $ok = 1 ]; then pass "Settings: tapping '$1' is closed (round $ROUND)"
   else shot "settings-tap-$ROUND-$(echo "$1" | tr ' /&' '___')"; fail "Settings: tapping '$1' is closed (round $ROUND)" "$(resumed)"; fi
+}
+
+# Two levels: open a safe section, then tap a risky entry inside it.
+risky_tap_in() { # section entry
+  home; sh_ am start -a android.settings.SETTINGS >/dev/null; sleep 3
+  local found=0 ok=0
+  for i in 1 2 3 4 5 6 7 8; do tap_text "$1" && { found=1; break; }; sh_ input swipe 540 1800 540 800 300 >/dev/null; sleep 1; done
+  [ $found = 0 ] && { echo "INFO: Settings section '$1' not found"; return; }
+  sleep 3; found=0
+  for i in 1 2 3 4 5 6; do tap_text "$2" && { found=1; break; }; sh_ input swipe 540 1800 540 800 300 >/dev/null; sleep 1; done
+  [ $found = 0 ] && { echo "INFO: '$2' not found inside '$1'"; return; }
+  for k in 1 2 3 4 5; do sleep 2; resumed | grep -q "$PKG/" && { ok=1; break; }; done
+  if [ $ok = 1 ]; then pass "Settings: $1 > $2 is closed (round $ROUND)"
+  else shot "settings-tap2-$ROUND-$(echo "$2" | tr ' /&' '___')"; fail "Settings: $1 > $2 is closed (round $ROUND)" "$(resumed)"; fi
 }
 
 for ROUND in 1 2 3; do
@@ -67,6 +89,8 @@ for ROUND in 1 2 3; do
   risky_open "Factory reset" -n com.android.settings/.Settings\$FactoryResetActivity
   risky_tap "Accessibility"
   risky_tap "Apps"
+  risky_tap_in "System" "Developer options"
+  risky_tap_in "System" "Reset options"
 done
 
 safe_open "Main screen" -a android.settings.SETTINGS
