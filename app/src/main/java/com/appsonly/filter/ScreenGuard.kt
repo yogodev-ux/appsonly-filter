@@ -24,6 +24,17 @@ class ScreenGuard : AccessibilityService() {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString() ?: return
         val cls = event.className?.toString() ?: return
+        if (pkg == "com.android.systemui" && !KioskMode.isOn(this) && Prefs.load(this).locked) {
+            // Before kiosk mode is on (slow boot) the shade must stay shut. The status bar is
+            // already disabled then; if System UI ever lets it open anyway, close it and
+            // disable it again.
+            Log.i(TAG, "Screen guard closed the shade before kiosk mode")
+            KioskMode.setShadeAllowed(this, false)
+            if (android.os.Build.VERSION.SDK_INT >= 31) performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+            else performGlobalAction(GLOBAL_ACTION_BACK)
+            logOnce("shade_before_kiosk")
+            return
+        }
         if (!blocked(this, pkg, cls)) return
         Log.i(TAG, "Screen guard closed $pkg/$cls")
         performGlobalAction(GLOBAL_ACTION_HOME)

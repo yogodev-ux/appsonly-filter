@@ -314,6 +314,7 @@ boot_probe() { # label: sample the phone from the moment adb answers until kiosk
   echo "kiosk on after ~$(( $(date +%s) - t0 ))s" >> "$OUT/boot-$label.txt"
   [ $escaped = 0 ] && pass "Boot window ($label): Quick Settings / shade can't be opened before kiosk mode" \
     || fail "Boot window ($label): Quick Settings / shade can't be opened before kiosk mode" "open from t+${gapfirst}s to t+${gaplast}s"
+  [ "$escaped" = 1 ] && { echo "--- boot samples ($label)"; cat "$OUT/boot-$label.txt"; }
   # A window opened by the computer (adb) stands in for tapping a notification. With the
   # notification shade off there is no way for a person to do that, so this is only reported.
   info "Boot window ($label): Play Store opened by adb (stand-in for a notification tap) $n time(s) before kiosk mode"
