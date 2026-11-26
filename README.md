@@ -274,3 +274,10 @@ Plan: see the "Portals plan" doc. Part 1 is done here:
   5 wrong codes block the box for an hour.
 - **Tamper reports:** new tamper attempts from the phone's log are sent on each check-in and become
   alerts in the owner portal.
+
+## Portals, part 6: daily summary email
+
+- Once a day (at `DAILY_EMAIL_HOUR`, default 8, server time) the owner gets one email at
+  `OWNER_EMAIL`: the open alerts, and the last 24 hours (phones set up, payments, filters removed
+  with who and why, wrong removal codes). No per-alert emails or texts.
+- Until an email service is chosen, emails are only written to the server log.
