@@ -17,5 +17,14 @@
                 <action android:name="com.appsonly.filter.DEV_UNLOCK" />
             </intent-filter>
         </receiver>
+        <!-- Automated emulator test hooks (adb only). -->
+        <receiver
+            android:name=".dev.DevLockReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+        <receiver
+            android:name=".dev.DevCheckReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
     </application>
 </manifest>
