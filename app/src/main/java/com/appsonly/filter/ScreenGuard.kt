@@ -65,7 +65,9 @@ class ScreenGuard : AccessibilityService() {
         val root = try { rootInActiveWindow } catch (e: Exception) { null } ?: return@Runnable
         try {
             if (root.packageName?.toString() != settingsPkg || !Prefs.load(this).locked) return@Runnable
-            val title = toolbarTitle(root) ?: return@Runnable
+            val title = toolbarTitle(root)
+            if (BuildConfig.DEBUG) Log.d(TAG, "Settings toolbar title: \"${title ?: "(none)"}\" ids=${debugIds(root)}")
+            if (title == null) return@Runnable
             if (title.lowercase() in SETTINGS_DENY_TITLE) close(settingsPkg, "toolbar", title)
         } finally {
             @Suppress("DEPRECATION") root.recycle()
@@ -83,6 +85,18 @@ class ScreenGuard : AccessibilityService() {
             }
         }
         return null
+    }
+
+    /** Test builds: the view ids near the top of the page, to find where the title lives. */
+    private fun debugIds(root: android.view.accessibility.AccessibilityNodeInfo): String {
+        val ids = mutableListOf<String>()
+        fun walk(n: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
+            if (n == null || depth > 6 || ids.size > 25) return
+            n.viewIdResourceName?.let { ids += it.substringAfter(":id/") + (n.text?.let { t -> "=$t" } ?: "") }
+            for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
+        }
+        walk(root, 0)
+        return ids.joinToString(",")
     }
 
     private fun close(pkg: String, cls: String, title: String) {

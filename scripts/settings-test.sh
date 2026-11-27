@@ -72,7 +72,8 @@ risky_tap_in() { # section entry
   [ $found = 0 ] && { echo "INFO: '$2' not found inside '$1'"; return; }
   for k in 1 2 3 4 5; do sleep 2; resumed | grep -q "$PKG/" && { ok=1; break; }; done
   if [ $ok = 1 ]; then pass "Settings: $1 > $2 is closed (round $ROUND)"
-  else shot "settings-tap2-$ROUND-$(echo "$2" | tr ' /&' '___')"; fail "Settings: $1 > $2 is closed (round $ROUND)" "$(resumed)"; fi
+  else shot "settings-tap2-$ROUND-$(echo "$2" | tr ' /&' '___')"; fail "Settings: $1 > $2 is closed (round $ROUND)" "$(resumed)"
+    screen_texts; grep -F "Settings toolbar title" "$OUT/logcat.txt" | tail -3 | sed 's/.*AppsOnly[^:]*: /   /'; fi
 }
 
 for ROUND in 1 2 3; do

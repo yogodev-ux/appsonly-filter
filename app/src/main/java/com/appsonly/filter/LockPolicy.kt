@@ -109,6 +109,7 @@ object LockPolicy {
 
         // 3. Hide / suspend everything that isn't allowed.
         val visible = visiblePackages(ctx, cfg)
+        if (BuildConfig.DEBUG) Log.d(TAG, "visible: ${visible.sorted().joinToString(" ")}")
         val untouchable = AppScanner.untouchable(ctx)
         val webView = AppScanner.webViewPackage()
         // Any app a user installed is a target too, even one without an icon (for example one
