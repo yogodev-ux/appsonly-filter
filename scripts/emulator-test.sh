@@ -108,7 +108,10 @@ sh_ dumpsys user > "$OUT/dumpsys-user.txt"
 for r in no_install_unknown_sources no_uninstall_apps no_factory_reset no_safe_boot no_add_user no_config_vpn no_config_date_time disallow_config_private_dns; do
   grep -q "$r" "$OUT/dumpsys-user.txt" && pass "Restriction $r set" || fail "Restriction $r set"
 done
-grep -qw no_install_apps "$OUT/dumpsys-user.txt" && fail "Play updates not blocked (no_install_apps absent)" || pass "Play updates not blocked (no_install_apps absent)"
+# Ask Android through the app (newer versions list every restriction name in dumpsys user).
+IA=$(sh_ am broadcast -n $PKG/.dev.DevStatusReceiver | grep -o 'install_apps_blocked=[a-z]*')
+[ "$IA" = "install_apps_blocked=false" ] && pass "Play updates not blocked (no_install_apps absent)" \
+  || { fail "Play updates not blocked (no_install_apps absent)" "$IA"; grep -nw no_install_apps "$OUT/dumpsys-user.txt" | head -5; }
 
 echo "== kiosk mode"
 LT=$(sh_ dumpsys activity activities | grep -m1 -i "mLockTaskModeState")

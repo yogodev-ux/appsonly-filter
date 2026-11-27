@@ -88,7 +88,9 @@ class DevStatusReceiver : BroadcastReceiver() {
         else if (dpm.getUserRestrictions(admin).getBoolean(android.os.UserManager.DISALLOW_APPS_CONTROL))
             "apps_control_restriction:${context.packageName}"
         else "unsupported"
-        resultData = "user_control_disabled=$userControl"
+        val um = context.getSystemService(android.os.UserManager::class.java)
+        resultData = "user_control_disabled=$userControl install_apps_blocked=" +
+            um.hasUserRestriction(android.os.UserManager.DISALLOW_INSTALL_APPS)
     }
 }
 
