@@ -8,6 +8,9 @@
 //                            code is stored only as a hash; optional uninstallCode (XXXX-XXXX-XXXX)
 //                            for offline removal, shown in the portals only after removal
 //   POST /v1/tamper          Bearer <token> {events: [{type, detail}]}  -> alerts for the owner
+//   POST /v1/blocked-sites   Bearer <token> {sites: [{app, host}]}  websites an allowed app still
+//                            needs; the owner approves them in the owner portal -> {apps}
+//   GET  /v1/app-sites       Bearer <token>  -> {apps: {"<package>": ["<host>", ...]}} approved
 // Owner and staff (web pages, one sign-in; see web.js, owner.js, staff.js):
 //   GET/POST /login   POST /logout   /owner/...  (owner portal)   /staff/...  (staff portal)
 // Customer (from the reset email):
@@ -29,6 +32,7 @@ import { createServices, OutboxMailer } from './services.js';
 import { createWeb } from './web.js';
 import { createOwnerPortal } from './owner.js';
 import { createStaffPortal } from './staff.js';
+import { createSiteRequests } from './sites.js';
 import { escapeHtml, html, json, payCode, randomToken, sha256Hex, timingSafeEqual } from './util.js';
 
 const STATUSES = new Set(['unpaid', 'paid', 'removed']);
@@ -63,9 +67,10 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
   const auth = createAuth({ store, baseUrl, ownerPassword });
   const services = createServices({ store, setStatus, mailer, baseUrl, ...(clock ? { now: clock } : {}) });
 
+  const sites = createSiteRequests({ store, ...(clock ? { now: clock } : {}) });
   const web = createWeb({
     auth,
-    owner: createOwnerPortal({ store, services, ...(clock ? { now: clock } : {}) }),
+    owner: createOwnerPortal({ store, services, sites, ...(clock ? { now: clock } : {}) }),
     staff: createStaffPortal({ store, services }),
   });
 
@@ -151,6 +156,22 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
     return json({ ok: true });
   }
 
+  async function blockedSites(request) {
+    const device = await deviceFromAuth(request);
+    if (!device) return json({ error: 'unknown device' }, 401);
+    const body = await request.json().catch(() => null);
+    const list = Array.isArray(body?.sites) ? body.sites : [];
+    if (!list.length) return json({ error: 'no sites' }, 400);
+    await sites.report(device, list);
+    return json({ ok: true, apps: await sites.approved() });
+  }
+
+  async function appSites(request) {
+    const device = await deviceFromAuth(request);
+    if (!device) return json({ error: 'unknown device' }, 401);
+    return json({ apps: await sites.approved() });
+  }
+
   async function payPage(code, url) {
     const device = await store.findDevice('payCode', code);
     if (!device) return html('<h1>Code not found</h1><p>Check the code shown on the phone and try again.</p>', 404);
@@ -211,6 +232,8 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
       if (p === '/v1/license' && method === 'GET') return license(request);
       if (p === '/v1/customer' && method === 'POST') return customer(request);
       if (p === '/v1/tamper' && method === 'POST') return tamper(request);
+      if (p === '/v1/blocked-sites' && method === 'POST') return blockedSites(request);
+      if (p === '/v1/app-sites' && method === 'GET') return appSites(request);
       if (p === '/v1/stripe/webhook' && method === 'POST') return webhook(request);
       if (p === '/v1/installer-logs' && method === 'POST') return installerLog(request);
 
@@ -251,5 +274,5 @@ export function createApp({ store, signer, payments, adminToken, baseUrl, priceT
     }
   }
 
-  return { handle, services, auth };
+  return { handle, services, auth, sites };
 }

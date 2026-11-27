@@ -250,6 +250,8 @@ export function createServices({ store, setStatus, mailer, baseUrl, now = () => 
       lines.push(`- ${ALERT_TYPES[a.type] ?? a.type}: ${who}${a.detail ? `, ${a.detail}` : ''}`);
     }
     if (alerts.length > 30) lines.push(`- and ${alerts.length - 30} more`);
+    const siteReqs = ((await store.getMeta('siteRequests')) ?? []).filter((r) => r.status === 'open');
+    if (siteReqs.length) lines.push('', `${siteReqs.length} app ${siteReqs.length === 1 ? 'website waits' : 'websites wait'} for your approval: ${baseUrl}/owner/app-sites`);
     lines.push('', 'Last 24 hours:');
     lines.push(`- Phones set up: ${devices.filter((d) => recent(d.createdAt)).length}`);
     lines.push(`- Payments: ${devices.filter((d) => recent(d.paidAt)).length}`);

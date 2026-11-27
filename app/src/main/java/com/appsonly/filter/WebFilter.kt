@@ -86,7 +86,12 @@ object WebFilter {
             if (r.common.matches(h)) return true
             if (allowedPkgs.any { r.apps[it]?.matches(h) == true }) return true
             // What the app's own install files say it uses (see AppDomains).
-            return allowedPkgs.any { AppDomains.matches(ctx, it, h) }
+            if (allowedPkgs.any { AppDomains.matches(ctx, it, h) }) return true
+            // Approved by the owner after a phone reported it (see AppSites).
+            if (allowedPkgs.any { AppSites.approvedFor(ctx, it, h) }) return true
+            // Still blocked: report it so the owner can decide.
+            if (uid >= 0) AppSites.recordBlocked(ctx, allowedPkgs.first(), h)
+            return false
         }
         // Anything else (background system apps): Google infrastructure only.
         val isSystem = pkgs.any { pkg ->
