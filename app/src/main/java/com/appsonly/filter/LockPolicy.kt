@@ -118,6 +118,7 @@ object LockPolicy {
             AppScanner.homeApps(ctx) + AppScanner.PLAY_STORE +
             AppScanner.userInstalled(ctx)
 
+        if (BuildConfig.DEBUG) Log.d(TAG, "targets: ${targets.sorted().joinToString(" ")}")
         val toSuspend = mutableListOf<String>()
         for (pkg in targets) {
             if (pkg in visible || pkg in untouchable) continue
@@ -172,7 +173,7 @@ object LockPolicy {
     private fun hide(dpm: DevicePolicyManager, admin: ComponentName, pkg: String) {
         try {
             if (dpm.isApplicationHidden(admin, pkg)) return
-            if (dpm.setApplicationHidden(admin, pkg, true)) lastHidden += pkg
+            if (dpm.setApplicationHidden(admin, pkg, true)) { lastHidden += pkg; if (BuildConfig.DEBUG) Log.d(TAG, "hid $pkg") }
             else Log.w(TAG, "could not hide $pkg")
         } catch (e: Exception) {
             Log.w(TAG, "hide $pkg", e)

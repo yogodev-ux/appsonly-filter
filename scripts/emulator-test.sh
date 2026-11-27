@@ -122,8 +122,11 @@ echo "== hidden apps"
 hidden_state() { sh_ dumpsys package "$1" | grep -m1 -o "hidden=[a-z]*"; }
 for p in com.android.chrome com.google.android.googlequicksearchbox; do
   if sh_ pm list packages -u | grep -qx "package:$p"; then
-    # An app with no icon and no web pages can't be opened at all, so there is nothing to hide
-    # (the Google app on Android 10 images). The guard still closes any of its screens.
+    st=$(hidden_state "$p")
+    [ "$st" = "hidden=true" ] && { pass "$p hidden"; continue; }
+    # Not hidden: fine only if it can't be opened at all (no icon, no web pages).
+    # The guard still closes any of its screens.
+    sh_ cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$p" | tail -1 | sed 's/^/   launcher: /'
     if sh_ cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$p" | grep -q "No activity found" \
        && sh_ cmd package resolve-activity --brief -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d https://example.com "$p" | grep -q "No activity found"; then
       pass "$p can't be opened (no icon, no web pages), nothing to hide"; continue
