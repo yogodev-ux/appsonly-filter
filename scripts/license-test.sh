@@ -23,7 +23,7 @@ curl -sf $SERVER/health >/dev/null && pass "License server is up" || fail "Licen
 
 echo "== set up and lock, without paying"
 adb install -r -t "$APK" >/dev/null
-sh_ dpm set-device-owner --user 0 $PKG/.AdminReceiver | grep -q Success && pass "Becomes Device Owner" || fail "Becomes Device Owner"
+bash scripts/set-device-owner.sh $PKG/.AdminReceiver | grep -q Success && pass "Becomes Device Owner" || fail "Becomes Device Owner"
 APPOK=com.google.android.deskclock
 # What the Windows installer does after Device Owner: hand over the customer's details.
 CUSTB64=$(printf '{"name":"Dana Test","phone":"+1 212 555 0100","email":"dana@example.com","removalCode":"ci-removal-42"}' | base64 -w0)

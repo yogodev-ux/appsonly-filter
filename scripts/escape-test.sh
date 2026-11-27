@@ -62,7 +62,7 @@ LOGCAT_PID=$!
 echo "== install, Device Owner, lock"
 adb install -r -t "$APK" | tail -1
 adb install -r -t "$PROBE_APK" | tail -1
-sh_ dpm set-device-owner --user 0 $PKG/.AdminReceiver | tail -1
+bash scripts/set-device-owner.sh $PKG/.AdminReceiver | tail -1
 # What the Windows installer does: allow the screen guard.
 sh_ pm grant $PKG android.permission.WRITE_SECURE_SETTINGS
 ALLOWED=""

@@ -62,7 +62,7 @@ adb install -r -t "$APK" | tee "$OUT/install.txt"
 grep -q Success "$OUT/install.txt" && pass "APK installs" || fail "APK installs" "$(tail -1 "$OUT/install.txt")"
 
 echo "== device owner"
-DO=$(sh_ dpm set-device-owner --user 0 $PKG/.AdminReceiver)
+DO=$(bash scripts/set-device-owner.sh $PKG/.AdminReceiver)
 echo "$DO" > "$OUT/device-owner.txt"
 echo "$DO" | grep -q Success && pass "Becomes Device Owner" || fail "Becomes Device Owner" "$DO"
 
