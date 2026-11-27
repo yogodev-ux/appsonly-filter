@@ -277,7 +277,7 @@ N=$(grep -c "granted android.permission.ACCESS_FINE_LOCATION" "$OUT/logcat.txt")
 echo "== adding a Google account from the phone's real Settings app"
 # The screen guard opens Google's sign-in window when Settings shows "Add an account", so it
 # must be on (the Windows installer allows it the same way).
-sh_ pm grant $PKG android.permission.WRITE_SECURE_SETTINGS >/dev/null; sh_ appops set $PKG GET_USAGE_STATS allow >/dev/null; home; sleep 5
+sh_ pm grant $PKG android.permission.WRITE_SECURE_SETTINGS >/dev/null; sh_ appops set $PKG GET_USAGE_STATS allow >/dev/null; echo "INFO: usage access: $(sh_ appops get $PKG GET_USAGE_STATS)"; home; sleep 5
 sh_ settings get secure enabled_accessibility_services | grep -q "$PKG" || echo "INFO: screen guard not on yet: $(sh_ settings get secure enabled_accessibility_services)"
 ok_signin_top() { resumed | grep -qE "com.google.android.gms/|com.android.settings/|$PKG/|com.android.systemui"; }
 home; sh_ am start -a android.settings.SYNC_SETTINGS >/dev/null; sleep 3; shot 07-accounts
@@ -317,7 +317,7 @@ if open_signin; then
     sh_ am start -f 0x10000000 -n "$c" >/dev/null 2>&1
     cls=${c##*/}; ok=0; for k in 1 2 3; do sleep 2; resumed | grep -qF "${cls#.}" || { ok=1; break; }; done
     [ $ok = 1 ] && pass "During sign-in, $c is closed" || { shot "signin-window-$(echo ${c##*.})"; fail "During sign-in, $c is closed" "$(resumed)"
-      grep -E "guard saw com.google.android.gms|Screen guard closed com.google" "$OUT/logcat.txt" | tail -6 | sed 's/.*AppsOnly[^:]*: /   guard: /'; }
+      grep -E "guard saw com.google.android.gms|guard real front|usage records|Screen guard closed com.google" "$OUT/logcat.txt" | tail -10 | sed 's/.*AppsOnly[^:]*: /   guard: /'; }
     resumed | grep -q "com.google.android.gms/" || open_signin >/dev/null
   done
   # Home always leaves the sign-in (a Google page still starting may need a second press).

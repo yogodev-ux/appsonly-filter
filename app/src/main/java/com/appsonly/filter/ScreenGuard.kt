@@ -92,8 +92,9 @@ class ScreenGuard : AccessibilityService() {
             events.getNextEvent(e)
             if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED && e.className != null) last = e.packageName to e.className
         }
+        if (last == null && BuildConfig.DEBUG) Log.d(TAG, "guard real front: none in usage records")
         last
-    } catch (e: Exception) { null }
+    } catch (e: Exception) { Log.w(TAG, "usage records not readable", e); null }
 
     /**
      * Some Settings versions (Android 10) announce a page reached by tapping with the old
