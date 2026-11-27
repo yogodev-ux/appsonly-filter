@@ -13,8 +13,12 @@ android {
         applicationId = "com.appsonly.probe"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // -PprobeV2 builds "version 2", which has one more web address built in
+        // (the escape test installs it as an update to check the app is scanned again).
+        val v2 = project.hasProperty("probeV2")
+        versionCode = if (v2) 2 else 1
+        versionName = if (v2) "2.0" else "1.0"
+        resValue("string", "update_server", if (v2) "https://news.update-only-host.net/v2" else "none")
     }
     signingConfigs {
         getByName("debug") {

@@ -37,6 +37,10 @@ class FilterApp : Application() {
                     android.util.Log.i("AppsOnly", "new app installed: $pkg, checking now")
                     enforceAsync()
                 } else scheduleEnforce()
+                // An allowed app was updated: read its new install files for websites now,
+                // so its first lookups after the update don't wait for the scan.
+                if (intent.action == Intent.ACTION_PACKAGE_REPLACED && pkg in Prefs.load(context).allowedPackages)
+                    AppDomains.rescan(context, pkg)
             }
         }
         registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)

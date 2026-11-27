@@ -287,6 +287,19 @@ expect_site $PROBE random-unrelated-site.com BLOCKED "not in the app"
 # Leftovers of code names and cut-off names must not count as websites.
 expect_site $PROBE ava.io BLOCKED "piece of the code name java.io"
 expect_site $PROBE elemetry.probevendor-metrics.io BLOCKED "cut-off name"
+# An update of an allowed app is scanned again: version 2 of the test app has a new address.
+if [ -f escapeprobe-v2.apk ]; then
+  expect_site $PROBE news.update-only-host.net BLOCKED "before the update (not in version 1)"
+  adb install -r -t escapeprobe-v2.apk | tail -1
+  sleep 8
+  sh_ dumpsys package $PROBE | grep -m1 versionName
+  expect_site $PROBE news.update-only-host.net ALLOWED "after the update (new in version 2)"
+  expect_site $PROBE api.appsonlyprobe.com ALLOWED "own domain still allowed after the update"
+  N=$(grep -c "Scanned $PROBE" "$OUT/logcat.txt")
+  [ "$N" -ge 2 ] && pass "Update was scanned again ($N scans of the test app)" || fail "Update was scanned again" "$N scans"
+else
+  fail "Version 2 of the test app was built" "escapeprobe-v2.apk missing"
+fi
 # Real apps on the emulator: the scan must finish and give a result.
 for p in ${ALLOWED//,/ }; do
   [ "$p" = "$PROBE" ] && continue

@@ -80,6 +80,12 @@ object AppDomains {
         }, "app-domain-scan").start()
     }
 
+    /** Scans [pkg] again in the background (after an update). */
+    fun rescan(ctx: Context, pkg: String) {
+        val app = ctx.applicationContext
+        Thread({ get(app, pkg) }, "app-domain-rescan").start()
+    }
+
     private fun dir(ctx: Context) =
         File(ctx.createDeviceProtectedStorageContext().filesDir, "app_domains").also { it.mkdirs() }
 
