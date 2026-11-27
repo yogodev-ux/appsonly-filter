@@ -55,6 +55,7 @@ class ScreenGuard : AccessibilityService() {
                 main.removeCallbacks(realCheck)
                 main.postDelayed(realCheck, 300)
                 main.postDelayed(realCheck, 1200)
+                main.postDelayed(realCheck, 2500) // a slow phone can take this long to show it
             }
             return
         }
