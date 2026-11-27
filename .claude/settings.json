@@ -1,0 +1,46 @@
+{
+  "enabledPlugins": {
+    "pr-review-toolkit@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
+    "insecure-defaults@trailofbits": true,
+    "sharp-edges@trailofbits": true,
+    "mutation-testing@trailofbits": true,
+    "static-analysis@trailofbits": true,
+    "supply-chain-risk-auditor@trailofbits": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official",
+        "ref": "0fbfda5a91f4adc311daca25acc99132f40f0b6e"
+      }
+    },
+    "trailofbits": {
+      "source": {
+        "source": "github",
+        "repo": "trailofbits/skills",
+        "ref": "149d7b21f4067765b82e67029730b42d228ef4b4"
+      }
+    }
+  },
+  "env": {
+    "MOBILEMCP_DISABLE_TELEMETRY": "1",
+    "MAESTRO_CLI_NO_ANALYTICS": "1",
+    "MAESTRO_DISABLE_UPDATE_CHECK": "1",
+    "SUPERPOWERS_DISABLE_TELEMETRY": "1"
+  },
+  "enableAllProjectMcpServers": true,
+  "permissions": {
+    "deny": [
+      "mcp__mobile-mcp__mobile_login_to_cloud_provider",
+      "mcp__mobile-mcp__mobile_list_remote_devices",
+      "mcp__mobile-mcp__mobile_allocate_remote_device",
+      "mcp__mobile-mcp__mobile_release_remote_device",
+      "mcp__maestro__list_cloud_devices",
+      "mcp__maestro__run_on_cloud",
+      "mcp__maestro__get_cloud_run_status",
+      "mcp__maestro__describe_cloud_run"
+    ]
+  }
+}
