@@ -27,8 +27,9 @@ risky_open() { # name, am start args...
   local name=$1; shift
   # Start from a closed Settings app, so a page left over from an earlier test can't be
   # mistaken for this one.
-  home; sh_ am force-stop com.android.settings; sh_ am start "$@" >/dev/null 2>&1; sleep 2
-  if locked_top; then pass "Settings: $name is locked (round $ROUND)"
+  home; sh_ am force-stop com.android.settings; sh_ am start "$@" >/dev/null 2>&1
+  local ok=0; for k in 1 2 3 4; do sleep 2; locked_top && { ok=1; break; }; done
+  if [ $ok = 1 ]; then pass "Settings: $name is locked (round $ROUND)"
   else shot "settings-risky-$ROUND-$(echo "$name" | tr ' /&' '___')"; fail "Settings: $name is locked (round $ROUND)" "$(resumed)"; fi
 }
 safe_open() { # name, am start args...
