@@ -94,7 +94,7 @@ object KioskMode {
         hideSideDoors(ctx, dpm, admin, visible)
         ScreenGuard.ensureOn(ctx)
         val signIn = if (System.currentTimeMillis() < googleSignInUntil) setOf(GMS) else emptySet()
-        val pkgs = (visible + SYSTEM_HELPERS + AppScanner.keyboards(ctx) + ctx.packageName + signIn).toTypedArray()
+        val pkgs = (visible + SYSTEM_HELPERS + AppScanner.keyboardsToKeep(ctx) + ctx.packageName + signIn).toTypedArray()
         try {
             dpm.setLockTaskPackages(admin, pkgs)
             dpm.setLockTaskFeatures(admin, FEATURES)
