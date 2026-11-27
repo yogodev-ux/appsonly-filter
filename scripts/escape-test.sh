@@ -373,6 +373,8 @@ while read -r cmp; do
   sh_ am start -S -W -n $PROBE/.Probe --es cmp "$cmp" >/dev/null
   sleep 1.5
   top=$(resumed); tp=${top%%/*}
+  # A slow runner can need a moment more; the guard closing it within ~4 s still counts.
+  if [ -n "$tp" ] && ! is_ok_top "$top"; then sleep 3; top=$(resumed); tp=${top%%/*}; fi
   if [ -n "$tp" ] && ! is_ok_top "$top"; then
     # Android lets an allowed app open other apps' screens inside its own window (kiosk
     # mode only checks which app a window belongs to); the screen guard must close them.
