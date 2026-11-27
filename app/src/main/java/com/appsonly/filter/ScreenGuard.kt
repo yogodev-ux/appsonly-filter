@@ -39,7 +39,7 @@ class ScreenGuard : AccessibilityService() {
         val title = event.text.joinToString(" ").trim()
         if (pkg == settingsPkg) Log.i(TAG, "Settings screen: $cls \"$title\"")
         if (pkg == settingsPkg && ADD_ACCOUNT_CHOOSER.containsMatchIn(cls)) KioskMode.beginGoogleSignIn(this)
-        if (pkg == settingsPkg) recheckSettingsTitle()
+        if (pkg == settingsPkg) { lastSettingsCls = cls; recheckSettingsTitle() }
         if (!blocked(this, pkg, cls, title)) {
             // A pop-up of the blocked app itself doesn't count as being back somewhere allowed.
             // (For Settings that also means its main page: after Back from a locked page we
@@ -59,13 +59,16 @@ class ScreenGuard : AccessibilityService() {
         main.removeCallbacks(titleCheck)
         main.postDelayed(titleCheck, 400)
         main.postDelayed(titleCheck, 1500)
+        main.postDelayed(titleCheck, 3000) // a cold start of Settings can take this long
     }
 
     private val titleCheck = Runnable {
         val root = try { rootInActiveWindow } catch (e: Exception) { null } ?: return@Runnable
         try {
             if (root.packageName?.toString() != settingsPkg || !Prefs.load(this).locked) return@Runnable
-            val title = toolbarTitle(root)
+            // Newer Settings pages (Android 14+, "Spa" pages) are drawn with Compose and have
+            // no toolbar view id; their title is simply the top text on the page.
+            val title = toolbarTitle(root) ?: if (!lastSettingsCls.contains("homepage", true)) topText(root) else null
             if (BuildConfig.DEBUG) Log.d(TAG, "Settings toolbar title: \"${title ?: "(none)"}\" ids=${debugIds(root)}")
             if (title == null) return@Runnable
             if (title.lowercase() in SETTINGS_DENY_TITLE) close(settingsPkg, "toolbar", title)
@@ -99,6 +102,24 @@ class ScreenGuard : AccessibilityService() {
         return ids.joinToString(",")
     }
 
+    /** The first text near the top of the page that is a locked title, if any. */
+    private fun topText(root: android.view.accessibility.AccessibilityNodeInfo): String? {
+        val screenH = resources.displayMetrics.heightPixels
+        val r = android.graphics.Rect()
+        var found: String? = null
+        fun walk(n: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
+            if (n == null || depth > 25 || found != null) return
+            val t = n.text?.toString()?.trim()
+            if (!t.isNullOrEmpty()) {
+                n.getBoundsInScreen(r)
+                if (r.top < screenH / 5 && t.lowercase() in SETTINGS_DENY_TITLE) { found = t; return }
+            }
+            for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
+        }
+        walk(root, 0)
+        return found
+    }
+
     private fun close(pkg: String, cls: String, title: String) {
         Log.i(TAG, "Screen guard closed $pkg/$cls \"$title\"")
         // Back closes the screen itself (Home alone only hides it, and it comes back when
@@ -115,6 +136,7 @@ class ScreenGuard : AccessibilityService() {
     }
 
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    @Volatile private var lastSettingsCls = ""
     @Volatile private var lastAllowedAt = 0L
     @Volatile private var blockedAt = 0L
     @Volatile private var blockedPkg = ""
