@@ -39,6 +39,7 @@ class ScreenGuard : AccessibilityService() {
         val title = event.text.joinToString(" ").trim()
         if (pkg == settingsPkg) Log.i(TAG, "Settings screen: $cls \"$title\"")
         if (pkg == settingsPkg && ADD_ACCOUNT_CHOOSER.containsMatchIn(cls)) KioskMode.beginGoogleSignIn(this)
+        if (pkg == settingsPkg) recheckSettingsTitle()
         if (!blocked(this, pkg, cls, title)) {
             // A pop-up of the blocked app itself doesn't count as being back somewhere allowed.
             // (For Settings that also means its main page: after Back from a locked page we
@@ -46,6 +47,45 @@ class ScreenGuard : AccessibilityService() {
             if (pkg != blockedPkg) lastAllowedAt = SystemClock.elapsedRealtime()
             return
         }
+        close(pkg, cls, title)
+    }
+
+    /**
+     * Some Settings versions (Android 10) announce a page reached by tapping with the old
+     * page's title, then put the real title in the toolbar. So shortly after any Settings
+     * page shows, read the toolbar title too and close the page if that title is locked.
+     */
+    private fun recheckSettingsTitle() {
+        main.removeCallbacks(titleCheck)
+        main.postDelayed(titleCheck, 400)
+        main.postDelayed(titleCheck, 1500)
+    }
+
+    private val titleCheck = Runnable {
+        val root = try { rootInActiveWindow } catch (e: Exception) { null } ?: return@Runnable
+        try {
+            if (root.packageName?.toString() != settingsPkg || !Prefs.load(this).locked) return@Runnable
+            val title = toolbarTitle(root) ?: return@Runnable
+            if (title.lowercase() in SETTINGS_DENY_TITLE) close(settingsPkg, "toolbar", title)
+        } finally {
+            @Suppress("DEPRECATION") root.recycle()
+        }
+    }
+
+    private fun toolbarTitle(root: android.view.accessibility.AccessibilityNodeInfo): String? {
+        for (id in TOOLBAR_IDS) {
+            for (bar in root.findAccessibilityNodeInfosByViewId(id)) {
+                for (i in 0 until bar.childCount) {
+                    val t = bar.getChild(i)?.text?.toString()?.trim()
+                    if (!t.isNullOrEmpty()) return t
+                }
+                bar.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+            }
+        }
+        return null
+    }
+
+    private fun close(pkg: String, cls: String, title: String) {
         Log.i(TAG, "Screen guard closed $pkg/$cls \"$title\"")
         // Back closes the screen itself (Home alone only hides it, and it comes back when
         // the app is opened again). If Back shows another blocked screen, that one is
@@ -81,6 +121,12 @@ class ScreenGuard : AccessibilityService() {
 
     companion object {
         private const val TAG = "AppsOnly"
+
+        /** Where Settings shows the page title (old action bar, newer collapsing toolbar). */
+        private val TOOLBAR_IDS = listOf(
+            "com.android.settings:id/action_bar", "android:id/action_bar",
+            "com.android.settings:id/collapsing_toolbar", "com.android.settings:id/toolbar",
+        )
 
         /** System parts allowed apps need. Their screens are allowed, minus the settings-like ones below. */
         private val HELPERS = setOf(
@@ -122,7 +168,7 @@ class ScreenGuard : AccessibilityService() {
         )
         val SETTINGS_DENY_TITLE = setOf(
             "accessibility", "talkback", "select to speak", "switch access", "voice access",
-            "apps", "app info", "all apps", "see all apps", "default apps", "home app", "special app access",
+            "apps", "apps & notifications", "app info", "all apps", "see all apps", "default apps", "home app", "special app access",
             "display over other apps", "usage access", "install unknown apps", "notification access",
             "device & app notifications", "modify system settings", "all files access", "alarms & reminders",
             "picture-in-picture", "wi-fi control", "premium sms access", "unrestricted data",

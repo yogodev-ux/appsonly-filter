@@ -83,6 +83,10 @@ class DevStatusReceiver : BroadcastReceiver() {
         val admin = AdminReceiver.component(context)
         val userControl = if (android.os.Build.VERSION.SDK_INT >= 30)
             try { dpm.getUserControlDisabledPackages(admin).joinToString(",") } catch (e: Exception) { "error:${e.javaClass.simpleName}" }
+        // Android 10 has no per-app call; there the "no app control" restriction stops force-stop
+        // and clear-data in Settings for every app, ours included.
+        else if (dpm.getUserRestrictions(admin).getBoolean(android.os.UserManager.DISALLOW_APPS_CONTROL))
+            "apps_control_restriction:${context.packageName}"
         else "unsupported"
         resultData = "user_control_disabled=$userControl"
     }

@@ -63,7 +63,8 @@ object TamperGuard {
     }
 
     fun applyFrp(ctx: Context, dpm: DevicePolicyManager, admin: ComponentName, accounts: List<String>) {
-        if (accounts.isEmpty() || Build.VERSION.SDK_INT < 30) return
+        if (accounts.isEmpty()) return
+        if (Build.VERSION.SDK_INT < 30) { applyFrpViaPlayServices(ctx, dpm, admin, accounts); return }
         try {
             val policy = FactoryResetProtectionPolicy.Builder()
                 .setFactoryResetProtectionAccounts(accounts)
@@ -75,6 +76,28 @@ object TamperGuard {
             Log.i(TAG, "FRP not supported on this device")
         } catch (e: Exception) {
             Log.w(TAG, "FRP", e)
+        }
+    }
+
+    /**
+     * Android 10 has no FRP call for the device owner. There, Google Play services reads the
+     * accounts from its managed configuration instead ("factoryResetProtectionAdmin") and is
+     * told to look again with a broadcast.
+     */
+    private fun applyFrpViaPlayServices(ctx: Context, dpm: DevicePolicyManager, admin: ComponentName, accounts: List<String>) {
+        try {
+            val gms = "com.google.android.gms"
+            val config = dpm.getApplicationRestrictions(admin, gms)
+            config.putStringArray("factoryResetProtectionAdmin", accounts.toTypedArray())
+            config.putBoolean("disableFactoryResetProtectionAdmin", false)
+            dpm.setApplicationRestrictions(admin, gms, config)
+            ctx.sendBroadcast(
+                android.content.Intent("com.google.android.gms.auth.FRP_CONFIG_CHANGED")
+                    .setPackage(gms).addFlags(android.content.Intent.FLAG_RECEIVER_FOREGROUND)
+            )
+            Log.i(TAG, "FRP set for ${accounts.size} account(s) (Play services, Android 10)")
+        } catch (e: Exception) {
+            Log.w(TAG, "FRP (Play services)", e)
         }
     }
 

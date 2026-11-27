@@ -119,7 +119,12 @@ echo "== hidden apps"
 hidden_state() { sh_ dumpsys package "$1" | grep -m1 -o "hidden=[a-z]*"; }
 for p in com.android.chrome com.google.android.googlequicksearchbox; do
   if sh_ pm list packages -u | grep -qx "package:$p"; then
-    st=$(hidden_state "$p"); [ "$st" = "hidden=true" ] && pass "$p hidden" || fail "$p hidden" "$st"
+    st=$(hidden_state "$p")
+    if [ "$st" = "hidden=true" ]; then pass "$p hidden"; else
+      fail "$p hidden" "$st"
+      grep -E "hide $p|could not hide $p|AppsOnly.*$p" "$OUT/logcat.txt" | tail -5
+      sh_ dumpsys package "$p" | grep -m6 -E "pkgFlags|privateFlags|enabled=|suspended=|installed="
+    fi
   fi
 done
 if sh_ pm list packages -u | grep -qx "package:com.android.vending"; then
