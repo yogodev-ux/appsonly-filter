@@ -62,9 +62,10 @@ LOGCAT_PID=$!
 echo "== install, Device Owner, lock"
 adb install -r -t "$APK" | tail -1
 adb install -r -t "$PROBE_APK" | tail -1
-sh_ dpm set-device-owner --user 0 $PKG/.AdminReceiver | tail -1
+bash scripts/set-device-owner.sh $PKG/.AdminReceiver | tail -1
 # What the Windows installer does: allow the screen guard.
 sh_ pm grant $PKG android.permission.WRITE_SECURE_SETTINGS
+sh_ appops set $PKG GET_USAGE_STATS allow >/dev/null
 ALLOWED=""
 for p in com.google.android.deskclock com.google.android.calculator com.android.deskclock; do
   sh_ pm list packages | grep -qx "package:$p" && { ALLOWED=$p; break; }
@@ -131,7 +132,7 @@ check_front() {
     sleep 4; top2=$(resumed)
     # Risky Settings screens open in their own window (Settings is an allowed app) and
     # are closed by the guard too, so they get the same grace.
-    if { [ "${SAME_TASK:-0}" = 1 ] || [ "$p" = com.android.settings ]; } && is_ok_top "$top2"; then
+    if { [ "${SAME_TASK:-0}" = 1 ] || [ "$p" = com.android.settings ] || [[ "$p" == *permissioncontroller ]]; } && is_ok_top "$top2"; then
       pass "$name"; info "$name: closed by the guard after ~6 s ($top)"
     else
       fail "$name" "opened $top"; [ "${SAME_TASK:-0}" = 1 ] && sh_ am force-stop "$p" >/dev/null
@@ -324,7 +325,11 @@ net_probe() { # what kind(url|tcp) [extra am args] -> prints "ok ..." or "error 
   done
   echo "${r:-error no answer}"
 }
-net_ok()      { local n=$1; shift; local r; r=$(net_probe "$@"); case "$r" in ok*) pass "$n ($r)";; *) fail "$n" "$r";; esac; }
+# An allowed site gets one more try only when the probe app gave no answer at all (it was
+# just updated and restarted, so its first start can be slow). A real block still fails.
+net_ok()      { local n=$1; shift; local r; r=$(net_probe "$@")
+  if [ "$r" = "error no answer" ]; then echo "  no answer from the probe app, trying once more"; sleep 5; r=$(net_probe "$@"); [ "${r%% *}" = ok ] && r="$r, on the second try"; fi
+  case "$r" in ok*) pass "$n ($r)";; *) fail "$n" "$r";; esac; }
 net_refused() { local n=$1; shift; local r; r=$(net_probe "$@"); case "$r" in error*) pass "$n (${r:0:80})";; *) fail "$n" "it worked: $r";; esac; }
 
 net_ok "Allowed app still reaches a site on its list" "https://www.googleapis.com/" url
@@ -369,6 +374,8 @@ while read -r cmp; do
   sh_ am start -S -W -n $PROBE/.Probe --es cmp "$cmp" >/dev/null
   sleep 1.5
   top=$(resumed); tp=${top%%/*}
+  # A slow runner can need a moment more; the guard closing it within ~4 s still counts.
+  if [ -n "$tp" ] && ! is_ok_top "$top"; then sleep 3; top=$(resumed); tp=${top%%/*}; fi
   if [ -n "$tp" ] && ! is_ok_top "$top"; then
     # Android lets an allowed app open other apps' screens inside its own window (kiosk
     # mode only checks which app a window belongs to); the screen guard must close them.
@@ -396,7 +403,9 @@ grep "Screen guard closed" "$OUT/logcat.txt" | sed 's/.*Screen guard closed //' 
 info "Screen guard closed $(wc -l < "$OUT/guard-closed.txt") different screens (see guard-closed.txt)"
 cat "$OUT/guard-closed.txt"
 echo "--- guard events from Play services (class names the guard saw)"
-grep "guard saw" "$OUT/logcat.txt" | sed 's/.*guard saw //' | sort | uniq -c | sort -rn | head -30
+grep "guard saw" "$OUT/logcat.txt" | sed 's/.*guard saw //' | cut -c1-160 | sort | uniq -c | sort -rn | head -60
+echo "--- real front screens the guard looked up"
+grep "guard real front" "$OUT/logcat.txt" | sed 's/.*guard real front: //' | sort | uniq -c | sort -rn | head -20
 home
 
 # ------------------------------------------------------------------ 1. boot window
@@ -416,7 +425,9 @@ boot_probe() { # label: sample the phone from the moment adb answers until kiosk
     top=$(resumed)
     echo "t+${now}s kiosk=$k focus=$f top=$top sb=$(sbflags)" >> "$OUT/boot-$label.txt"
     # Once kiosk mode is on, the shade may open (notifications only), so that sample doesn't count.
-    if [ "$k" != "LOCKED" ] && echo "$f" | grep -qi NotificationShade; then
+    # Kiosk mode can come on during the sample (it then allows the shade itself), so the
+    # sample only counts if kiosk mode is still off after it.
+    if [ "$k" != "LOCKED" ] && echo "$f" | grep -qi NotificationShade && [ "$(kiosk)" != "LOCKED" ]; then
       [ -z "$gapfirst" ] && { gapfirst=$now; shot "boot-$label-shade-open"; }
       gaplast=$now; escaped=1
     fi

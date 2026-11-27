@@ -3,6 +3,8 @@ package com.appsonly.filter
 import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
 import android.content.Context
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.content.pm.PackageManager
 import android.os.SystemClock
 import android.provider.Settings
@@ -35,17 +37,138 @@ class ScreenGuard : AccessibilityService() {
             logOnce("shade_before_kiosk")
             return
         }
-        if (pkg == "com.google.android.gms" && (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) Log.d(TAG, "guard saw $pkg/$cls")
+        if (pkg in HELPERS && (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) Log.d(TAG, "guard saw $pkg/$cls \"${event.text.joinToString(" ").trim()}\"")
         val title = event.text.joinToString(" ").trim()
         if (pkg == settingsPkg) Log.i(TAG, "Settings screen: $cls \"$title\"")
         if (pkg == settingsPkg && ADD_ACCOUNT_CHOOSER.containsMatchIn(cls)) KioskMode.beginGoogleSignIn(this)
+        if (pkg == settingsPkg) { lastSettingsCls = cls; recheckSettingsTitle() }
         if (!blocked(this, pkg, cls, title)) {
             // A pop-up of the blocked app itself doesn't count as being back somewhere allowed.
             // (For Settings that also means its main page: after Back from a locked page we
             // still go Home.)
             if (pkg != blockedPkg) lastAllowedAt = SystemClock.elapsedRealtime()
+            // A helper screen that announced a plain view class instead of its activity
+            // (Android 10's Play services Help, Android 16's Safety Center): look up which
+            // activity really came to the front and judge that.
+            if (pkg in HELPERS && !isActivity(this, pkg, cls)) {
+                pendingTitle = title
+                main.removeCallbacks(realCheck)
+                main.postDelayed(realCheck, 300)
+                main.postDelayed(realCheck, 1200)
+                main.postDelayed(realCheck, 2500) // a slow phone can take this long to show it
+            }
             return
         }
+        close(pkg, cls, title)
+    }
+
+    @Volatile private var pendingTitle = ""
+    private val realCheck = Runnable { closeIfRealFrontBlocked() }
+
+    /**
+     * Closes the front screen if, by the usage records, it is a locked helper screen. Covers
+     * screens that announce a plain view class, and screens that announce nothing to the
+     * guard at all (Android 16's Safety Center, opened by Settings inside its own window).
+     */
+    private fun closeIfRealFrontBlocked(): Boolean {
+        val (pkg, cls) = lastResumed(this) ?: return false
+        if (BuildConfig.DEBUG) Log.d(TAG, "guard real front: $pkg/$cls")
+        if (pkg in HELPERS && isActivity(this, pkg, cls) && blocked(this, pkg, cls, pendingTitle)) {
+            close(pkg, cls, pendingTitle); return true
+        }
+        return false
+    }
+
+    /**
+     * The activity that most recently came to the front, from the phone's usage records
+     * (the installer gives the app usage access). Null if that access is missing.
+     */
+    private fun lastResumed(ctx: Context): Pair<String, String>? = try {
+        val usm = ctx.getSystemService(UsageStatsManager::class.java)
+        val now = System.currentTimeMillis()
+        val events = usm.queryEvents(now - 10_000, now + 1_000)
+        val e = UsageEvents.Event()
+        var last: Pair<String, String>? = null
+        while (events.hasNextEvent()) {
+            events.getNextEvent(e)
+            if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED && e.className != null) last = e.packageName to e.className
+        }
+        if (last == null && BuildConfig.DEBUG) Log.d(TAG, "guard real front: none in usage records")
+        last
+    } catch (e: Exception) { Log.w(TAG, "usage records not readable", e); null }
+
+    /**
+     * Some Settings versions (Android 10) announce a page reached by tapping with the old
+     * page's title, then put the real title in the toolbar. So shortly after any Settings
+     * page shows, read the toolbar title too and close the page if that title is locked.
+     */
+    private fun recheckSettingsTitle() {
+        main.removeCallbacks(titleCheck)
+        main.postDelayed(titleCheck, 400)
+        main.postDelayed(titleCheck, 1500)
+        main.postDelayed(titleCheck, 3000) // a cold start of Settings can take this long
+    }
+
+    private val titleCheck = Runnable {
+        if (Prefs.load(this).locked && closeIfRealFrontBlocked()) return@Runnable
+        val root = try { rootInActiveWindow } catch (e: Exception) { null } ?: return@Runnable
+        try {
+            if (root.packageName?.toString() != settingsPkg || !Prefs.load(this).locked) return@Runnable
+            // Newer Settings pages (Android 14+, "Spa" pages) are drawn with Compose and have
+            // no toolbar view id; their title is simply the top text on the page.
+            val title = toolbarTitle(root) ?: if (!lastSettingsCls.contains("homepage", true)) topText(root) else null
+            if (BuildConfig.DEBUG) Log.d(TAG, "Settings toolbar title: \"${title ?: "(none)"}\" ids=${debugIds(root)}")
+            if (title == null) return@Runnable
+            if (title.lowercase() in SETTINGS_DENY_TITLE) close(settingsPkg, "toolbar", title)
+        } finally {
+            @Suppress("DEPRECATION") root.recycle()
+        }
+    }
+
+    private fun toolbarTitle(root: android.view.accessibility.AccessibilityNodeInfo): String? {
+        for (id in TOOLBAR_IDS) {
+            for (bar in root.findAccessibilityNodeInfosByViewId(id)) {
+                for (i in 0 until bar.childCount) {
+                    val t = bar.getChild(i)?.text?.toString()?.trim()
+                    if (!t.isNullOrEmpty()) return t
+                }
+                bar.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+            }
+        }
+        return null
+    }
+
+    /** Test builds: the view ids near the top of the page, to find where the title lives. */
+    private fun debugIds(root: android.view.accessibility.AccessibilityNodeInfo): String {
+        val ids = mutableListOf<String>()
+        fun walk(n: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
+            if (n == null || depth > 6 || ids.size > 25) return
+            n.viewIdResourceName?.let { ids += it.substringAfter(":id/") + (n.text?.let { t -> "=$t" } ?: "") }
+            for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
+        }
+        walk(root, 0)
+        return ids.joinToString(",")
+    }
+
+    /** The first text near the top of the page that is a locked title, if any. */
+    private fun topText(root: android.view.accessibility.AccessibilityNodeInfo): String? {
+        val screenH = resources.displayMetrics.heightPixels
+        val r = android.graphics.Rect()
+        var found: String? = null
+        fun walk(n: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
+            if (n == null || depth > 25 || found != null) return
+            val t = n.text?.toString()?.trim()
+            if (!t.isNullOrEmpty()) {
+                n.getBoundsInScreen(r)
+                if (r.top < screenH / 5 && t.lowercase() in SETTINGS_DENY_TITLE) { found = t; return }
+            }
+            for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
+        }
+        walk(root, 0)
+        return found
+    }
+
+    private fun close(pkg: String, cls: String, title: String) {
         Log.i(TAG, "Screen guard closed $pkg/$cls \"$title\"")
         // Back closes the screen itself (Home alone only hides it, and it comes back when
         // the app is opened again). If Back shows another blocked screen, that one is
@@ -61,6 +184,7 @@ class ScreenGuard : AccessibilityService() {
     }
 
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    @Volatile private var lastSettingsCls = ""
     @Volatile private var lastAllowedAt = 0L
     @Volatile private var blockedAt = 0L
     @Volatile private var blockedPkg = ""
@@ -82,6 +206,12 @@ class ScreenGuard : AccessibilityService() {
     companion object {
         private const val TAG = "AppsOnly"
 
+        /** Where Settings shows the page title (old action bar, newer collapsing toolbar). */
+        private val TOOLBAR_IDS = listOf(
+            "com.android.settings:id/action_bar", "android:id/action_bar",
+            "com.android.settings:id/collapsing_toolbar", "com.android.settings:id/toolbar",
+        )
+
         /** System parts allowed apps need. Their screens are allowed, minus the settings-like ones below. */
         private val HELPERS = setOf(
             "android", "com.android.systemui", "com.android.intentresolver",
@@ -96,12 +226,14 @@ class ScreenGuard : AccessibilityService() {
         private val HELPER_DENY = listOf(
             // permission app: "Default apps", "Home app", app permission manager
             Regex("""permissioncontroller\.(role|permission\.ui\.(ManagePermissions|AppPermission))"""),
+            // permission app: Security & privacy (Safety Center), the Settings "Security" page on newer Android
+            Regex("""permissioncontroller\.(safetycenter|privacysources)"""),
             // phone service: call / SIM / radio settings (the emergency dialer stays allowed)
             Regex("""com\.android\.phone\..*(Setting|Options|IccPin|RadioInfo|BandMode|Fdn)"""),
             // Play services: Google Account, Google settings, Find My Device, parental controls
             // (any Play services screen with "settings" in its name, e.g. googlesettings.ui.GoogleSettingsActivity),
             // and Help & Feedback, which shows web pages
-            Regex("""com\.google\.android\.gms\..*([Ss]ettings|\.kids\.|\.mdm\.|\.googlehelp\.|\.feedback\.)"""),
+            Regex("""com\.google\.android\.gms\..*[Ss]ettings|com\.google\.android\.gms(\.[^.]+)*\.(kids|mdm|googlehelp|feedback)\."""),
         )
 
         /**
@@ -122,7 +254,7 @@ class ScreenGuard : AccessibilityService() {
         )
         val SETTINGS_DENY_TITLE = setOf(
             "accessibility", "talkback", "select to speak", "switch access", "voice access",
-            "apps", "app info", "all apps", "see all apps", "default apps", "home app", "special app access",
+            "apps", "apps & notifications", "app info", "all apps", "see all apps", "default apps", "home app", "special app access",
             "display over other apps", "usage access", "install unknown apps", "notification access",
             "device & app notifications", "modify system settings", "all files access", "alarms & reminders",
             "picture-in-picture", "wi-fi control", "premium sms access", "unrestricted data",
@@ -148,6 +280,9 @@ class ScreenGuard : AccessibilityService() {
         private class Allowed(val apps: Set<String>, val keyboards: Set<String>)
         @Volatile private var cache: Pair<Long, Allowed>? = null
 
+        /** Titles of helper screens that lead to settings, used when the screen's class is unknown. */
+        private val HELPER_DENY_TITLE = Regex("""(?i)^(security|privacy|security & privacy|safety cent(er|re)|help|help & feedback|find my device|parental controls)$""")
+
         private fun allowed(ctx: Context): Allowed {
             val now = SystemClock.elapsedRealtime()
             cache?.let { if (now - it.first < 10_000) return it.second }
@@ -162,7 +297,11 @@ class ScreenGuard : AccessibilityService() {
             val a = allowed(ctx)
             if (pkg == AppScanner.settingsPackage(ctx)) return settingsBlocked(cls, title)
             if (pkg in a.apps) return false
-            if (!isActivity(ctx, pkg, cls)) return false // pop-ups, overlays, the keyboard itself, the shade
+            if (!isActivity(ctx, pkg, cls)) {
+                // Some full screens announce a plain view class instead of their activity
+                // (Android 16's Safety Center, Android 10's Play services Help). Judge those by title.
+                return pkg in HELPERS && title.isNotEmpty() && HELPER_DENY_TITLE.containsMatchIn(title)
+            } // otherwise pop-ups, overlays, the keyboard itself, the shade
             if (pkg in a.keyboards) return true // keyboard settings screens
             if (pkg in HELPERS) {
                 // Google sign-in, only when the customer started it from Settings > Accounts > Add account

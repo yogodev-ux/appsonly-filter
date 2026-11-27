@@ -23,7 +23,7 @@ curl -sf $SERVER/health >/dev/null && pass "License server is up" || fail "Licen
 
 echo "== set up and lock, without paying"
 adb install -r -t "$APK" >/dev/null
-sh_ dpm set-device-owner --user 0 $PKG/.AdminReceiver | grep -q Success && pass "Becomes Device Owner" || fail "Becomes Device Owner"
+bash scripts/set-device-owner.sh $PKG/.AdminReceiver | grep -q Success && pass "Becomes Device Owner" || fail "Becomes Device Owner"
 APPOK=com.google.android.deskclock
 # What the Windows installer does after Device Owner: hand over the customer's details.
 CUSTB64=$(printf '{"name":"Dana Test","phone":"+1 212 555 0100","email":"dana@example.com","removalCode":"ci-removal-42"}' | base64 -w0)
@@ -131,9 +131,15 @@ owner_of_phone && pass "Still Device Owner before the removal arrives" || fail "
 lic >/dev/null; sleep 3
 # Removing Device Owner can end the app's process before that broadcast answers, so ask again
 # without talking to the server.
-L=$(sh_ am broadcast -n $PKG/.dev.DevLicenseReceiver --ez refresh false | grep -o 'data="[^"]*"'); echo "license: $L"
+# The app restarts after it stops being Device Owner, so give it a few tries to answer.
+for i in 1 2 3 4 5; do
+  L=$(sh_ am broadcast -n $PKG/.dev.DevLicenseReceiver --ez refresh false | grep -o 'data="[^"]*"')
+  [ -n "$L" ] && break; sleep 3
+done
+echo "license: $L"
 echo "$L" | grep -q "removed=true" && pass "Phone obeys the removal from the portal" || fail "Phone obeys the removal from the portal" "$L"
 owner_of_phone && fail "Device Owner is gone after removal" || pass "Device Owner is gone after removal"
+for i in 1 2 3 4 5; do [ "$(hidden com.android.vending)" = "hidden=false" ] && break; sleep 2; done
 [ "$(hidden com.android.vending)" = "hidden=false" ] && pass "Hidden apps are back (Play Store)" || fail "Hidden apps are back (Play Store)" "$(hidden com.android.vending)"
 sh_ am start -n $PKG/.MainActivity >/dev/null; sleep 3
 adb exec-out screencap -p > "$OUT/3-filter-removed.png"

@@ -62,7 +62,7 @@ adb install -r -t "$APK" | tee "$OUT/install.txt"
 grep -q Success "$OUT/install.txt" && pass "APK installs" || fail "APK installs" "$(tail -1 "$OUT/install.txt")"
 
 echo "== device owner"
-DO=$(sh_ dpm set-device-owner --user 0 $PKG/.AdminReceiver)
+DO=$(bash scripts/set-device-owner.sh $PKG/.AdminReceiver)
 echo "$DO" > "$OUT/device-owner.txt"
 echo "$DO" | grep -q Success && pass "Becomes Device Owner" || fail "Becomes Device Owner" "$DO"
 
@@ -108,7 +108,10 @@ sh_ dumpsys user > "$OUT/dumpsys-user.txt"
 for r in no_install_unknown_sources no_uninstall_apps no_factory_reset no_safe_boot no_add_user no_config_vpn no_config_date_time disallow_config_private_dns; do
   grep -q "$r" "$OUT/dumpsys-user.txt" && pass "Restriction $r set" || fail "Restriction $r set"
 done
-grep -qw no_install_apps "$OUT/dumpsys-user.txt" && fail "Play updates not blocked (no_install_apps absent)" || pass "Play updates not blocked (no_install_apps absent)"
+# Ask Android through the app (newer versions list every restriction name in dumpsys user).
+IA=$(sh_ am broadcast -n $PKG/.dev.DevStatusReceiver | grep -o 'install_apps_blocked=[a-z]*')
+[ "$IA" = "install_apps_blocked=false" ] && pass "Play updates not blocked (no_install_apps absent)" \
+  || { fail "Play updates not blocked (no_install_apps absent)" "$IA"; grep -nw no_install_apps "$OUT/dumpsys-user.txt" | head -5; }
 
 echo "== kiosk mode"
 LT=$(sh_ dumpsys activity activities | grep -m1 -i "mLockTaskModeState")
@@ -119,7 +122,21 @@ echo "== hidden apps"
 hidden_state() { sh_ dumpsys package "$1" | grep -m1 -o "hidden=[a-z]*"; }
 for p in com.android.chrome com.google.android.googlequicksearchbox; do
   if sh_ pm list packages -u | grep -qx "package:$p"; then
-    st=$(hidden_state "$p"); [ "$st" = "hidden=true" ] && pass "$p hidden" || fail "$p hidden" "$st"
+    st=$(hidden_state "$p")
+    [ "$st" = "hidden=true" ] && { pass "$p hidden"; continue; }
+    # Not hidden: fine only if it can't be opened at all (no icon, no web pages).
+    # The guard still closes any of its screens.
+    sh_ cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$p" | tail -1 | sed 's/^/   launcher: /'
+    if sh_ cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$p" | grep -q "No activity found" \
+       && sh_ cmd package resolve-activity --brief -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d https://example.com "$p" | grep -q "No activity found"; then
+      pass "$p can't be opened (no icon, no web pages), nothing to hide"; continue
+    fi
+    st=$(hidden_state "$p")
+    if [ "$st" = "hidden=true" ]; then pass "$p hidden"; else
+      fail "$p hidden" "$st"
+      grep -E "hide $p|could not hide $p|AppsOnly.*$p" "$OUT/logcat.txt" | tail -5
+      sh_ dumpsys package "$p" | grep -m6 -E "pkgFlags|privateFlags|enabled=|suspended=|installed="
+    fi
   fi
 done
 if sh_ pm list packages -u | grep -qx "package:com.android.vending"; then
@@ -260,7 +277,7 @@ N=$(grep -c "granted android.permission.ACCESS_FINE_LOCATION" "$OUT/logcat.txt")
 echo "== adding a Google account from the phone's real Settings app"
 # The screen guard opens Google's sign-in window when Settings shows "Add an account", so it
 # must be on (the Windows installer allows it the same way).
-sh_ pm grant $PKG android.permission.WRITE_SECURE_SETTINGS >/dev/null; home; sleep 5
+sh_ pm grant $PKG android.permission.WRITE_SECURE_SETTINGS >/dev/null; sh_ appops set $PKG GET_USAGE_STATS allow >/dev/null; echo "INFO: usage access: $(sh_ appops get $PKG GET_USAGE_STATS)"; home; sleep 5
 sh_ settings get secure enabled_accessibility_services | grep -q "$PKG" || echo "INFO: screen guard not on yet: $(sh_ settings get secure enabled_accessibility_services)"
 ok_signin_top() { resumed | grep -qE "com.google.android.gms/|com.android.settings/|$PKG/|com.android.systemui"; }
 home; sh_ am start -a android.settings.SYNC_SETTINGS >/dev/null; sleep 3; shot 07-accounts
@@ -299,7 +316,8 @@ if open_signin; then
            com.google.android.gms/.googlehelp.helpactivities.HelpActivity; do
     sh_ am start -f 0x10000000 -n "$c" >/dev/null 2>&1
     cls=${c##*/}; ok=0; for k in 1 2 3; do sleep 2; resumed | grep -qF "${cls#.}" || { ok=1; break; }; done
-    [ $ok = 1 ] && pass "During sign-in, $c is closed" || { shot "signin-window-$(echo ${c##*.})"; fail "During sign-in, $c is closed" "$(resumed)"; }
+    [ $ok = 1 ] && pass "During sign-in, $c is closed" || { shot "signin-window-$(echo ${c##*.})"; fail "During sign-in, $c is closed" "$(resumed)"
+      grep -E "guard saw com.google.android.gms|guard real front|usage records|Screen guard closed com.google" "$OUT/logcat.txt" | tail -10 | sed 's/.*AppsOnly[^:]*: /   guard: /'; }
     resumed | grep -q "com.google.android.gms/" || open_signin >/dev/null
   done
   # Home always leaves the sign-in (a Google page still starting may need a second press).

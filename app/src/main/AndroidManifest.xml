@@ -27,6 +27,10 @@
     <!-- Granted by the Windows installer (adb), so the screen guard can be kept switched on. -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
+    <!-- Usage access, given by the Windows installer (adb), so the screen guard can tell which
+         screen really came to the front when a screen hides its name. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
     <!-- "Back to home" notification while Google sign-in is open. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 

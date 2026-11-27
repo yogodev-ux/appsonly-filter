@@ -109,6 +109,7 @@ object LockPolicy {
 
         // 3. Hide / suspend everything that isn't allowed.
         val visible = visiblePackages(ctx, cfg)
+        if (BuildConfig.DEBUG) Log.d(TAG, "visible: ${visible.sorted().joinToString(" ")}")
         val untouchable = AppScanner.untouchable(ctx)
         val webView = AppScanner.webViewPackage()
         // Any app a user installed is a target too, even one without an icon (for example one
@@ -117,6 +118,7 @@ object LockPolicy {
             AppScanner.homeApps(ctx) + AppScanner.PLAY_STORE +
             AppScanner.userInstalled(ctx)
 
+        if (BuildConfig.DEBUG) Log.d(TAG, "targets: ${targets.sorted().joinToString(" ")}")
         val toSuspend = mutableListOf<String>()
         for (pkg in targets) {
             if (pkg in visible || pkg in untouchable) continue
@@ -171,7 +173,7 @@ object LockPolicy {
     private fun hide(dpm: DevicePolicyManager, admin: ComponentName, pkg: String) {
         try {
             if (dpm.isApplicationHidden(admin, pkg)) return
-            if (dpm.setApplicationHidden(admin, pkg, true)) lastHidden += pkg
+            if (dpm.setApplicationHidden(admin, pkg, true)) { lastHidden += pkg; if (BuildConfig.DEBUG) Log.d(TAG, "hid $pkg") }
             else Log.w(TAG, "could not hide $pkg")
         } catch (e: Exception) {
             Log.w(TAG, "hide $pkg", e)

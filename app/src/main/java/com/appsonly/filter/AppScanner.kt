@@ -81,6 +81,18 @@ object AppScanner {
         ctx.getSystemService(InputMethodManager::class.java)
             ?.inputMethodList?.map { it.packageName }?.toSet() ?: emptySet()
 
+    /**
+     * Keyboards that must keep working. A real app that also ships a keyboard (on Android 10 the
+     * Google app carries "Google voice typing") is still hidden like any other app, unless it is
+     * the keyboard the phone types with right now.
+     */
+    fun keyboardsToKeep(ctx: Context): Set<String> {
+        val current = Settings.Secure.getString(ctx.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
+            ?.substringBefore('/')
+        val apps = launchable(ctx)
+        return keyboards(ctx).filter { it == current || it !in apps }.toSet()
+    }
+
     /** App installers (the system "install app?" screen etc.). */
     fun installers(ctx: Context): Set<String> {
         val install = Intent(Intent.ACTION_INSTALL_PACKAGE)
@@ -113,7 +125,7 @@ object AppScanner {
 
     /** Packages that are never touched at all. */
     fun untouchable(ctx: Context): Set<String> =
-        CORE + keyboards(ctx) + setOfNotNull(webViewPackage()?.takeIf { it !in browsers(ctx) }) +
+        CORE + keyboardsToKeep(ctx) + setOfNotNull(webViewPackage()?.takeIf { it !in browsers(ctx) }) +
             ctx.packageName
 
     fun defaultDialer(ctx: Context): String? =
