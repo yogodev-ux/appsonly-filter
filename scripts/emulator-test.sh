@@ -122,6 +122,12 @@ echo "== hidden apps"
 hidden_state() { sh_ dumpsys package "$1" | grep -m1 -o "hidden=[a-z]*"; }
 for p in com.android.chrome com.google.android.googlequicksearchbox; do
   if sh_ pm list packages -u | grep -qx "package:$p"; then
+    # An app with no icon and no web pages can't be opened at all, so there is nothing to hide
+    # (the Google app on Android 10 images). The guard still closes any of its screens.
+    if sh_ cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$p" | grep -q "No activity found" \
+       && sh_ cmd package resolve-activity --brief -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d https://example.com "$p" | grep -q "No activity found"; then
+      pass "$p can't be opened (no icon, no web pages), nothing to hide"; continue
+    fi
     st=$(hidden_state "$p")
     if [ "$st" = "hidden=true" ]; then pass "$p hidden"; else
       fail "$p hidden" "$st"
@@ -307,7 +313,8 @@ if open_signin; then
            com.google.android.gms/.googlehelp.helpactivities.HelpActivity; do
     sh_ am start -f 0x10000000 -n "$c" >/dev/null 2>&1
     cls=${c##*/}; ok=0; for k in 1 2 3; do sleep 2; resumed | grep -qF "${cls#.}" || { ok=1; break; }; done
-    [ $ok = 1 ] && pass "During sign-in, $c is closed" || { shot "signin-window-$(echo ${c##*.})"; fail "During sign-in, $c is closed" "$(resumed)"; }
+    [ $ok = 1 ] && pass "During sign-in, $c is closed" || { shot "signin-window-$(echo ${c##*.})"; fail "During sign-in, $c is closed" "$(resumed)"
+      grep -E "guard saw com.google.android.gms|Screen guard closed com.google" "$OUT/logcat.txt" | tail -6 | sed 's/.*AppsOnly[^:]*: /   guard: /'; }
     resumed | grep -q "com.google.android.gms/" || open_signin >/dev/null
   done
   # Home always leaves the sign-in (a Google page still starting may need a second press).
