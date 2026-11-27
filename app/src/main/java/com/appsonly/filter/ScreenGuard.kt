@@ -35,7 +35,7 @@ class ScreenGuard : AccessibilityService() {
             logOnce("shade_before_kiosk")
             return
         }
-        if (pkg == "com.google.android.gms" && (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) Log.d(TAG, "guard saw $pkg/$cls \"${event.text.joinToString(" ").trim()}\"")
+        if (pkg in HELPERS && (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) Log.d(TAG, "guard saw $pkg/$cls \"${event.text.joinToString(" ").trim()}\"")
         val title = event.text.joinToString(" ").trim()
         if (pkg == settingsPkg) Log.i(TAG, "Settings screen: $cls \"$title\"")
         if (pkg == settingsPkg && ADD_ACCOUNT_CHOOSER.containsMatchIn(cls)) KioskMode.beginGoogleSignIn(this)
@@ -232,6 +232,9 @@ class ScreenGuard : AccessibilityService() {
         private class Allowed(val apps: Set<String>, val keyboards: Set<String>)
         @Volatile private var cache: Pair<Long, Allowed>? = null
 
+        /** Titles of helper screens that lead to settings, used when the screen's class is unknown. */
+        private val HELPER_DENY_TITLE = Regex("""(?i)^(security|privacy|security & privacy|safety cent(er|re)|help|help & feedback|find my device|parental controls)$""")
+
         private fun allowed(ctx: Context): Allowed {
             val now = SystemClock.elapsedRealtime()
             cache?.let { if (now - it.first < 10_000) return it.second }
@@ -246,7 +249,11 @@ class ScreenGuard : AccessibilityService() {
             val a = allowed(ctx)
             if (pkg == AppScanner.settingsPackage(ctx)) return settingsBlocked(cls, title)
             if (pkg in a.apps) return false
-            if (!isActivity(ctx, pkg, cls)) return false // pop-ups, overlays, the keyboard itself, the shade
+            if (!isActivity(ctx, pkg, cls)) {
+                // Some full screens announce a plain view class instead of their activity
+                // (Android 16's Safety Center, Android 10's Play services Help). Judge those by title.
+                return pkg in HELPERS && title.isNotEmpty() && HELPER_DENY_TITLE.containsMatchIn(title)
+            } // otherwise pop-ups, overlays, the keyboard itself, the shade
             if (pkg in a.keyboards) return true // keyboard settings screens
             if (pkg in HELPERS) {
                 // Google sign-in, only when the customer started it from Settings > Accounts > Add account

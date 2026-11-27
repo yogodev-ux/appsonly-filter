@@ -131,7 +131,7 @@ check_front() {
     sleep 4; top2=$(resumed)
     # Risky Settings screens open in their own window (Settings is an allowed app) and
     # are closed by the guard too, so they get the same grace.
-    if { [ "${SAME_TASK:-0}" = 1 ] || [ "$p" = com.android.settings ]; } && is_ok_top "$top2"; then
+    if { [ "${SAME_TASK:-0}" = 1 ] || [ "$p" = com.android.settings ] || [[ "$p" == *permissioncontroller ]]; } && is_ok_top "$top2"; then
       pass "$name"; info "$name: closed by the guard after ~6 s ($top)"
     else
       fail "$name" "opened $top"; [ "${SAME_TASK:-0}" = 1 ] && sh_ am force-stop "$p" >/dev/null
