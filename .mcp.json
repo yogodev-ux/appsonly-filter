@@ -1,0 +1,33 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.86",
+        "--headless",
+        "--isolated"
+      ]
+    },
+    "mobile-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@mobilenext/mobile-mcp@1.0.20"
+      ],
+      "env": {
+        "MOBILEMCP_DISABLE_TELEMETRY": "1"
+      }
+    },
+    "maestro": {
+      "command": "${HOME}/.maestro/bin/maestro",
+      "args": [
+        "mcp"
+      ],
+      "env": {
+        "MAESTRO_CLI_NO_ANALYTICS": "1",
+        "MAESTRO_DISABLE_UPDATE_CHECK": "1"
+      }
+    }
+  }
+}
