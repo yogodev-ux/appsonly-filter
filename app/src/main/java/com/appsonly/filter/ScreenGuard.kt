@@ -156,6 +156,8 @@ class ScreenGuard : AccessibilityService() {
         private val HELPER_DENY = listOf(
             // permission app: "Default apps", "Home app", app permission manager
             Regex("""permissioncontroller\.(role|permission\.ui\.(ManagePermissions|AppPermission))"""),
+            // permission app: Security & privacy (Safety Center), the Settings "Security" page on newer Android
+            Regex("""permissioncontroller\.(safetycenter|privacysources)"""),
             // phone service: call / SIM / radio settings (the emergency dialer stays allowed)
             Regex("""com\.android\.phone\..*(Setting|Options|IccPin|RadioInfo|BandMode|Fdn)"""),
             // Play services: Google Account, Google settings, Find My Device, parental controls
