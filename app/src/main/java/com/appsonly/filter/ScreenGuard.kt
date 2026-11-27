@@ -62,10 +62,20 @@ class ScreenGuard : AccessibilityService() {
     }
 
     @Volatile private var pendingTitle = ""
-    private val realCheck = Runnable {
-        val (pkg, cls) = lastResumed(this) ?: return@Runnable
+    private val realCheck = Runnable { closeIfRealFrontBlocked() }
+
+    /**
+     * Closes the front screen if, by the usage records, it is a locked helper screen. Covers
+     * screens that announce a plain view class, and screens that announce nothing to the
+     * guard at all (Android 16's Safety Center, opened by Settings inside its own window).
+     */
+    private fun closeIfRealFrontBlocked(): Boolean {
+        val (pkg, cls) = lastResumed(this) ?: return false
         if (BuildConfig.DEBUG) Log.d(TAG, "guard real front: $pkg/$cls")
-        if (pkg in HELPERS && isActivity(this, pkg, cls) && blocked(this, pkg, cls, pendingTitle)) close(pkg, cls, pendingTitle)
+        if (pkg in HELPERS && isActivity(this, pkg, cls) && blocked(this, pkg, cls, pendingTitle)) {
+            close(pkg, cls, pendingTitle); return true
+        }
+        return false
     }
 
     /**
@@ -98,6 +108,7 @@ class ScreenGuard : AccessibilityService() {
     }
 
     private val titleCheck = Runnable {
+        if (Prefs.load(this).locked && closeIfRealFrontBlocked()) return@Runnable
         val root = try { rootInActiveWindow } catch (e: Exception) { null } ?: return@Runnable
         try {
             if (root.packageName?.toString() != settingsPkg || !Prefs.load(this).locked) return@Runnable

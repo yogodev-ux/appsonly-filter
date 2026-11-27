@@ -403,7 +403,9 @@ grep "Screen guard closed" "$OUT/logcat.txt" | sed 's/.*Screen guard closed //' 
 info "Screen guard closed $(wc -l < "$OUT/guard-closed.txt") different screens (see guard-closed.txt)"
 cat "$OUT/guard-closed.txt"
 echo "--- guard events from Play services (class names the guard saw)"
-grep "guard saw" "$OUT/logcat.txt" | sed 's/.*guard saw //' | sort | uniq -c | sort -rn | head -30
+grep "guard saw" "$OUT/logcat.txt" | sed 's/.*guard saw //' | cut -c1-160 | sort | uniq -c | sort -rn | head -60
+echo "--- real front screens the guard looked up"
+grep "guard real front" "$OUT/logcat.txt" | sed 's/.*guard real front: //' | sort | uniq -c | sort -rn | head -20
 home
 
 # ------------------------------------------------------------------ 1. boot window
