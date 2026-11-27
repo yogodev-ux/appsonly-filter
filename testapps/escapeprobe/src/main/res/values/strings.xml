@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TEST ONLY: a web address that exists only in this resource file (for the app scan test). -->
+<resources>
+    <string name="help_server">https://help.resource-only-host.net/faq</string>
+</resources>

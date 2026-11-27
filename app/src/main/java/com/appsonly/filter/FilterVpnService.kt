@@ -77,6 +77,7 @@ class FilterVpnService : VpnService() {
         if (fd == null) { Log.w(TAG, "VPN not allowed yet"); stopSelf(); return }
         tun = fd
         reader = Thread({ readLoop(fd) }, "dns-filter").also { it.start() }
+        AppDomains.prescan(this)
         Log.i(TAG, "Web filter started")
     }
 

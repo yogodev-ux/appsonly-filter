@@ -1,0 +1,28 @@
+{
+  "_readme": "General websites. When the app scan finds one of these inside an app, it is NOT allowed (only its service addresses such as api., graph. or cdn. are), unless the site is the app's own (the Facebook app keeps facebook.com). An entry covers the name and every sub-address.",
+  "sites": [
+    "facebook.com", "fb.com", "fb.me", "messenger.com", "instagram.com", "threads.net", "whatsapp.com",
+    "twitter.com", "x.com", "t.co", "tiktok.com", "snapchat.com", "linkedin.com", "pinterest.com",
+    "reddit.com", "tumblr.com", "discord.com", "discord.gg", "telegram.org", "t.me", "vk.com", "quora.com",
+    "youtube.com", "youtu.be", "vimeo.com", "dailymotion.com", "twitch.tv", "netflix.com", "spotify.com",
+    "soundcloud.com", "imdb.com",
+    "google.com", "google.co.uk", "google.co.il", "bing.com", "yahoo.com", "duckduckgo.com", "yandex.ru",
+    "yandex.com", "baidu.com", "ask.com", "aol.com", "msn.com", "live.com", "outlook.com", "startpage.com",
+    "brave.com", "ecosia.org",
+    "wikipedia.org", "wikimedia.org", "wiktionary.org", "wikihow.com", "fandom.com", "archive.org",
+    "medium.com", "blogspot.com", "blogger.com", "wordpress.com", "wordpress.org", "substack.com",
+    "cnn.com", "bbc.com", "bbc.co.uk", "nytimes.com", "foxnews.com", "theguardian.com", "washingtonpost.com",
+    "reuters.com", "apnews.com", "nbcnews.com", "cbsnews.com", "abcnews.go.com", "usatoday.com",
+    "huffpost.com", "buzzfeed.com", "forbes.com", "bloomberg.com", "wsj.com", "ynet.co.il", "walla.co.il",
+    "news.google.com", "news.yahoo.com", "espn.com",
+    "amazon.com", "ebay.com", "aliexpress.com", "alibaba.com", "temu.com", "etsy.com", "walmart.com",
+    "bit.ly", "goo.gl", "tinyurl.com", "ow.ly", "is.gd", "buff.ly", "linktr.ee",
+    "play.google.com", "apps.apple.com", "itunes.apple.com",
+    "github.com", "gitlab.com", "stackoverflow.com", "stackexchange.com",
+    "w3.org", "apache.org", "mozilla.org", "gnu.org", "opensource.org", "json.org", "ietf.org", "xml.org",
+    "xmlpull.org", "purl.org", "openxmlformats.org", "ns.adobe.com", "schemas.android.com",
+    "schemas.microsoft.com", "example.com", "example.org", "example.net", "localhost.localdomain",
+    "developer.android.com", "android.com", "chromium.org", "kotlinlang.org", "jetbrains.com", "oracle.com",
+    "pornhub.com", "xvideos.com", "xnxx.com", "xhamster.com", "onlyfans.com"
+  ]
+}

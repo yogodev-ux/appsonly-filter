@@ -115,3 +115,27 @@ class DevKioskDelayReceiver : BroadcastReceiver() {
         resultData = "DELAY=$ms"
     }
 }
+
+/**
+ * Scans an app's install files for the websites it needs and returns a summary:
+ *   adb shell am broadcast -n com.appsonly.filter/.dev.DevScanReceiver --es pkg com.example
+ * Result data: "own=a.com,b.net exact=12 dropped=3". The full lists go to logcat ("SCAN").
+ */
+class DevScanReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val pkg = intent.getStringExtra("pkg").orEmpty()
+        val pending = goAsync()
+        Thread {
+            val r = com.appsonly.filter.AppDomains.get(context, pkg)
+            if (r == null) {
+                pending.resultData = "none"
+            } else {
+                Log.i("AppsOnly", "SCAN $pkg own: ${r.own.sorted().joinToString()}")
+                Log.i("AppsOnly", "SCAN $pkg exact: ${r.exact.sorted().take(200).joinToString()}")
+                Log.i("AppsOnly", "SCAN $pkg dropped: ${r.dropped.sorted().take(200).joinToString()}")
+                pending.resultData = "own=${r.own.sorted().joinToString(",")} exact=${r.exact.size} dropped=${r.dropped.size}"
+            }
+            pending.finish()
+        }.start()
+    }
+}

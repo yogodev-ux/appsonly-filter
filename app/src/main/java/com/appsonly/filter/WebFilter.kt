@@ -84,7 +84,9 @@ object WebFilter {
         if (allowedPkgs.isNotEmpty()) {
             if (!STRICT_FOR_ALL_APPS) return true
             if (r.common.matches(h)) return true
-            return allowedPkgs.any { r.apps[it]?.matches(h) == true }
+            if (allowedPkgs.any { r.apps[it]?.matches(h) == true }) return true
+            // What the app's own install files say it uses (see AppDomains).
+            return allowedPkgs.any { AppDomains.matches(ctx, it, h) }
         }
         // Anything else (background system apps): Google infrastructure only.
         val isSystem = pkgs.any { pkg ->
