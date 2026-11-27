@@ -122,6 +122,7 @@ object License {
             Log.i(TAG, "license status=${payload.optString("status")}")
             sendCustomer(ctx, token)
             sendTamper(ctx, token)
+            syncAppSites(ctx, token)
             // Support removed the filter in the portal (a signed order for this phone).
             removeNow = payload.optString("status") == "removed" && LockPolicy.isDeviceOwner(ctx)
         } catch (e: Exception) {
@@ -185,6 +186,22 @@ object License {
             if (code == 200) p.edit().putLong("tamper_sent_until", newest).commit()
         } catch (e: Exception) {
             Log.w(TAG, "tamper report not sent yet: ${e.message}")
+        }
+    }
+
+    /** Reports websites allowed apps still need, and fetches the ones the owner approved. */
+    private fun syncAppSites(ctx: Context, token: String?) {
+        if (token == null) return
+        try {
+            val pending = AppSites.pending(ctx)
+            val (code, text) = if (pending.length() > 0) {
+                request("POST", "/v1/blocked-sites", JSONObject().put("sites", pending).toString(), token)
+            } else request("GET", "/v1/app-sites", null, token)
+            if (code != 200) { Log.w(TAG, "app websites: server said $code"); return }
+            if (pending.length() > 0) AppSites.sent(ctx, pending)
+            JSONObject(text).optJSONObject("apps")?.let { AppSites.saveApproved(ctx, it) }
+        } catch (e: Exception) {
+            Log.w(TAG, "app websites not synced yet: ${e.message}")
         }
     }
 

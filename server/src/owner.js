@@ -6,6 +6,7 @@
 //   /owner/staff           Staff accounts: add, turn off or on, set a new password
 //   /owner/setup-logs      Logs from the Windows installer
 //   /owner/actions         Action log: who did what, when and why
+//   /owner/app-sites       Websites phones report an allowed app still needs: approve or dismiss
 // Staff never see any of this; they have their own portal (staff.js).
 import { escapeHtml as e } from './util.js';
 import { hashPassword, passwordProblem, validUsername } from './auth.js';
@@ -49,13 +50,15 @@ main a{color:var(--accent)}
 const pill = (s) => `<span class="pill ${e(s)}">${e({ unpaid: 'not paid', paid: 'paid', removed: 'filter removed' }[s] ?? s)}</span>`;
 const DAY = 86400 * 1000;
 
-export function createOwnerPortal({ store, services, now = () => new Date() }) {
+export function createOwnerPortal({ store, services, sites, now = () => new Date() }) {
   const audit = (who, action, extra = {}) => store.addAudit({ at: now().toISOString(), by: who.name, role: who.role, action, ...extra });
 
   async function page(url, who, title, body, status = 200) {
     const open = (await services.listAlerts()).length;
+    const siteCount = (await sites.list('open')).length;
     const links = [
       ['/owner', 'Alerts', open ? `<span class="count">${open}</span>` : ''],
+      ['/owner/app-sites', 'App websites', siteCount ? `<span class="count">${siteCount}</span>` : ''],
       ['/owner/sales', 'Sales', ''],
       ['/owner/customers', 'Customers', ''],
       ['/owner/staff', 'Staff', ''],
@@ -84,7 +87,13 @@ export function createOwnerPortal({ store, services, now = () => new Date() }) {
         `${a.detail ? `<br><span>${e(a.type === 'tamper' ? a.detail.replace(/_/g, ' ') : a.detail)}</span>` : ''}<br><span class="muted">${when(a.at)}</span></div>` +
         `<form method="post" action="/owner/alerts/${e(a.id)}/handled"><button class="plain">Mark handled</button></form></div>`;
     }).join('');
-    return page(url, who, 'Alerts', `<h1>Alerts that need you</h1>${items || '<div class="card">Nothing needs you right now.</div>'}` +
+    const siteReqs = await sites.list('open');
+    const siteCard = siteReqs.length
+      ? `<div class="card alert"><div><b>${siteReqs.length === 1 ? 'An app needs a website' : `Apps need ${siteReqs.length} websites`} you haven't approved</b><br>` +
+        `<span>${e(siteReqs.slice(0, 3).map((r) => `${r.host} (${r.app})`).join(', '))}${siteReqs.length > 3 ? ', ...' : ''}</span></div>` +
+        `<a href="/owner/app-sites"><button class="plain">Review</button></a></div>`
+      : '';
+    return page(url, who, 'Alerts', `<h1>Alerts that need you</h1>${siteCard}${items || (siteCard ? '' : '<div class="card">Nothing needs you right now.</div>')}` +
       `<p><a href="/owner/actions">See handled alerts in the action log</a></p>`);
   }
 
@@ -268,10 +277,37 @@ ${rows || '<tr><td colspan="6" class="muted">No customers found.</td></tr>'}</ta
     return page(url, who, 'Setup logs', `<h1>Setup logs</h1><p class="muted">Sent by the Windows installer after each setup. They hold no customer details.</p>${items || '<div class="card">No setup logs yet.</div>'}`);
   }
 
+  // ---- App websites ----
+  async function appSitesPage(url, who) {
+    const row = (r, buttons) => `<tr><td><code>${e(r.app)}</code></td><td><b>${e(r.host)}</b></td><td>${r.count}</td>` +
+      `<td>${when(r.firstAt)}</td><td><div class="row">${buttons.map(([a, label, cls]) =>
+        `<form method="post" action="/owner/app-sites/${e(r.id)}/${a}"><button class="${cls}">${label}</button></form>`).join('')}</div></td></tr>`;
+    const head = '<tr><th>App</th><th>Website</th><th>Phones</th><th>First reported</th><th></th></tr>';
+    const open = (await sites.list('open')).map((r) => row(r, [['approve', 'Approve', ''], ['dismiss', 'Dismiss', 'plain']])).join('');
+    const approved = (await sites.list('approved')).map((r) => row(r, [['undo', 'Take back', 'plain']])).join('');
+    const dismissed = (await sites.list('dismissed')).slice(0, 200).map((r) => row(r, [['approve', 'Approve', 'plain']])).join('');
+    return page(url, who, 'App websites', `<h1>App websites</h1>
+<p class="muted">Each phone reads its allowed apps' install files to find the websites they need. When an app still asks for a website that is blocked, the phone reports it here: just the app and the website, nothing about the customer. Approving lets that app (only that app) reach the website on every phone. General websites like social media, search and news are better dismissed.</p>
+<div class="card"><h2>Waiting for you</h2><div class="scroll"><table>${head}${open || '<tr><td colspan="5" class="muted">Nothing waiting.</td></tr>'}</table></div></div>
+<div class="card"><h2>Approved</h2><div class="scroll"><table>${head}${approved || '<tr><td colspan="5" class="muted">None yet.</td></tr>'}</table></div></div>
+<div class="card"><details><summary>Dismissed</summary><div class="scroll"><table>${head}${dismissed || '<tr><td colspan="5" class="muted">None.</td></tr>'}</table></div></details></div>`);
+  }
+
+  async function appSiteAction(who, id, action) {
+    try {
+      const r = await sites.decide(who, id, action);
+      const msg = { approve: `Approved ${r.host} for ${r.app}. Phones get it at their next check-in.`, dismiss: `Dismissed ${r.host}.`, undo: `${r.host} is blocked again and back in the waiting list.` }[action];
+      return redirect(withMsg('/owner/app-sites', 'ok', msg));
+    } catch (err) {
+      if (err instanceof ServiceError) return redirect(withMsg('/owner/app-sites', 'err', err.message));
+      throw err;
+    }
+  }
+
   const ACTION_NAMES = {
     remove: 'Removed the filter (with code)', 'remove-without-code': 'Removed the filter without the code', 'wrong-removal-code': 'Wrong removal code',
     'mark-paid': 'Marked paid', 'lock-again': 'Locked again', 'send-code-reset': 'Sent a code-reset email', 'new-removal-code': 'Customer set a new removal code',
-    'alert-handled': 'Marked an alert handled', 'staff-added': 'Added staff', 'staff-turned-off': 'Turned staff off', 'staff-turned-on': 'Turned staff on', 'staff-password-set': 'Set a staff password',
+    'alert-handled': 'Marked an alert handled', 'site-approve': 'Approved an app website', 'site-dismiss': 'Dismissed an app website', 'site-undo': 'Took back an app website', 'staff-added': 'Added staff', 'staff-turned-off': 'Turned staff off', 'staff-turned-on': 'Turned staff on', 'staff-password-set': 'Set a staff password',
   };
 
   async function actionsPage(url, who) {
@@ -306,6 +342,8 @@ ${rows || '<tr><td colspan="5" class="muted">Nothing yet.</td></tr>'}</table></d
     if ((m = /^\/owner\/staff\/([a-z0-9._-]{3,32})\/(on|off|password)$/.exec(p)) && post) return staffAction(request, who, m[1], m[2]);
     if (p === '/owner/setup-logs' && get) return setupLogsPage(url, who);
     if (p === '/owner/actions' && get) return actionsPage(url, who);
+    if (p === '/owner/app-sites' && get) return appSitesPage(url, who);
+    if ((m = /^\/owner\/app-sites\/([\w-]+)\/(approve|dismiss|undo)$/.exec(p)) && post) return appSiteAction(who, m[1], m[2]);
     return page(url, who, 'Not found', '<h1>Page not found</h1>', 404);
   }
 

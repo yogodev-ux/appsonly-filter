@@ -93,6 +93,19 @@ R=$(form "$J1" /login --data-urlencode "username=owner" --data-urlencode "passwo
 echo "$R" | grep -q "/owner" && pass "Owner signs in and lands in the owner portal" || fail "Owner signs in and lands in the owner portal" "$R"
 get "$J1" /owner > "$OUT/portal-alerts.html"
 grep -q "Tamper attempt" "$OUT/portal-alerts.html" && grep -q "Dana Test" "$OUT/portal-alerts.html" && pass "Owner portal shows the phone's tamper attempt" || fail "Owner portal shows the phone's tamper attempt"
+# App website scan, step 3: a website an allowed app still needs is reported, and the owner approves it.
+verdict() { sh_ am broadcast -n $PKG/.dev.DevCheckReceiver --es pkg "$1" --es host "$2" | grep -o 'data="[A-Z]*"' | tr -d '"' | cut -d= -f2; }
+SITE=media.appsites-ci-test.net
+[ "$(verdict $APPOK $SITE)" = BLOCKED ] && pass "Website the app scan didn't find is blocked at first" || fail "Website the app scan didn't find is blocked at first"
+lic >/dev/null
+get "$J1" /owner/app-sites > "$OUT/portal-app-sites.html"
+grep -q "$SITE" "$OUT/portal-app-sites.html" && pass "Phone reports it; the owner portal lists it under App websites" || fail "Phone reports it; the owner portal lists it under App websites"
+get "$J1" /owner | grep -q "you haven" && pass "Owner portal home points to the website waiting for approval" || fail "Owner portal home points to the website waiting for approval"
+SID=$(tr '<' '\n' < "$OUT/portal-app-sites.html" | grep -A12 "$SITE" | grep -o 'app-sites/site_[A-Za-z0-9_-]*/approve' | head -1 | cut -d/ -f2)
+R=$(form "$J1" "/owner/app-sites/$SID/approve"); echo "$R" | grep -q "ok=Approved" && pass "Owner approves it" || fail "Owner approves it" "$SID $R"
+lic >/dev/null
+[ "$(verdict $APPOK $SITE)" = ALLOWED ] && pass "After approval the phone lets that app reach it" || fail "After approval the phone lets that app reach it"
+[ "$(verdict com.android.vending $SITE)" = BLOCKED ] && pass "Approval is for that app only (Play Store still blocked)" || fail "Approval is for that app only"
 R=$(form "$J1" /owner/staff --data-urlencode "username=helpdesk" --data-urlencode "password=ci-staff-password")
 echo "$R" | grep -q "ok=Added" && pass "Owner adds a staff account" || fail "Owner adds a staff account" "$R"
 R=$(form "$J2" /login --data-urlencode "username=helpdesk" --data-urlencode "password=ci-staff-password")
