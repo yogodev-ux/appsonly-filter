@@ -295,7 +295,8 @@ if [ -f escapeprobe-v2.apk ]; then
   sh_ dumpsys package $PROBE | grep -m1 versionName
   expect_site $PROBE news.update-only-host.net ALLOWED "after the update (new in version 2)"
   expect_site $PROBE api.appsonlyprobe.com ALLOWED "own domain still allowed after the update"
-  adb logcat -d | grep -q "Scanned $PROBE" && pass "Update was scanned again" || fail "Update was scanned again"
+  N=$(grep -c "Scanned $PROBE" "$OUT/logcat.txt")
+  [ "$N" -ge 2 ] && pass "Update was scanned again ($N scans of the test app)" || fail "Update was scanned again" "$N scans"
 else
   fail "Version 2 of the test app was built" "escapeprobe-v2.apk missing"
 fi
