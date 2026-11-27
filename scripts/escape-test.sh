@@ -65,6 +65,7 @@ adb install -r -t "$PROBE_APK" | tail -1
 bash scripts/set-device-owner.sh $PKG/.AdminReceiver | tail -1
 # What the Windows installer does: allow the screen guard.
 sh_ pm grant $PKG android.permission.WRITE_SECURE_SETTINGS
+sh_ appops set $PKG GET_USAGE_STATS allow >/dev/null
 ALLOWED=""
 for p in com.google.android.deskclock com.google.android.calculator com.android.deskclock; do
   sh_ pm list packages | grep -qx "package:$p" && { ALLOWED=$p; break; }

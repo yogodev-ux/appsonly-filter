@@ -3,6 +3,8 @@ package com.appsonly.filter
 import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
 import android.content.Context
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.content.pm.PackageManager
 import android.os.SystemClock
 import android.provider.Settings
@@ -45,10 +47,43 @@ class ScreenGuard : AccessibilityService() {
             // (For Settings that also means its main page: after Back from a locked page we
             // still go Home.)
             if (pkg != blockedPkg) lastAllowedAt = SystemClock.elapsedRealtime()
+            // A helper screen that announced a plain view class instead of its activity
+            // (Android 10's Play services Help, Android 16's Safety Center): look up which
+            // activity really came to the front and judge that.
+            if (pkg in HELPERS && !isActivity(this, pkg, cls)) {
+                pendingTitle = title
+                main.removeCallbacks(realCheck)
+                main.postDelayed(realCheck, 300)
+                main.postDelayed(realCheck, 1200)
+            }
             return
         }
         close(pkg, cls, title)
     }
+
+    @Volatile private var pendingTitle = ""
+    private val realCheck = Runnable {
+        val (pkg, cls) = lastResumed(this) ?: return@Runnable
+        if (BuildConfig.DEBUG) Log.d(TAG, "guard real front: $pkg/$cls")
+        if (pkg in HELPERS && isActivity(this, pkg, cls) && blocked(this, pkg, cls, pendingTitle)) close(pkg, cls, pendingTitle)
+    }
+
+    /**
+     * The activity that most recently came to the front, from the phone's usage records
+     * (the installer gives the app usage access). Null if that access is missing.
+     */
+    private fun lastResumed(ctx: Context): Pair<String, String>? = try {
+        val usm = ctx.getSystemService(UsageStatsManager::class.java)
+        val now = System.currentTimeMillis()
+        val events = usm.queryEvents(now - 10_000, now + 1_000)
+        val e = UsageEvents.Event()
+        var last: Pair<String, String>? = null
+        while (events.hasNextEvent()) {
+            events.getNextEvent(e)
+            if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED && e.className != null) last = e.packageName to e.className
+        }
+        last
+    } catch (e: Exception) { null }
 
     /**
      * Some Settings versions (Android 10) announce a page reached by tapping with the old

@@ -246,6 +246,9 @@ class SetupEngine(
         val r = adb.shell("pm grant ${config.pkg} android.permission.WRITE_SECURE_SETTINGS")
         if (r.ok && r.out.isBlank()) info("Screen guard allowed.")
         else warn("Could not allow the screen guard (${r.out.lines().firstOrNull().orEmpty()}). The lock still works without it.")
+        // Usage access lets the guard see the real name of a screen that hides it.
+        val u = adb.shell("appops set ${config.pkg} GET_USAGE_STATS allow")
+        if (!(u.ok && u.out.isBlank())) warn("Could not give the screen guard usage access (${u.out.lines().firstOrNull().orEmpty()}).")
     }
 
     /**

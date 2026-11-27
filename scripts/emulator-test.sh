@@ -277,7 +277,7 @@ N=$(grep -c "granted android.permission.ACCESS_FINE_LOCATION" "$OUT/logcat.txt")
 echo "== adding a Google account from the phone's real Settings app"
 # The screen guard opens Google's sign-in window when Settings shows "Add an account", so it
 # must be on (the Windows installer allows it the same way).
-sh_ pm grant $PKG android.permission.WRITE_SECURE_SETTINGS >/dev/null; home; sleep 5
+sh_ pm grant $PKG android.permission.WRITE_SECURE_SETTINGS >/dev/null; sh_ appops set $PKG GET_USAGE_STATS allow >/dev/null; home; sleep 5
 sh_ settings get secure enabled_accessibility_services | grep -q "$PKG" || echo "INFO: screen guard not on yet: $(sh_ settings get secure enabled_accessibility_services)"
 ok_signin_top() { resumed | grep -qE "com.google.android.gms/|com.android.settings/|$PKG/|com.android.systemui"; }
 home; sh_ am start -a android.settings.SYNC_SETTINGS >/dev/null; sleep 3; shot 07-accounts

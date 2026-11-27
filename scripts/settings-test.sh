@@ -5,6 +5,7 @@
 echo "== real Settings app: loopholes"
 # What the Windows installer does: allow the screen guard, then let the app switch it on.
 sh_ pm grant $PKG android.permission.WRITE_SECURE_SETTINGS >/dev/null
+sh_ appops set $PKG GET_USAGE_STATS allow >/dev/null
 home; sleep 6
 sh_ settings get secure enabled_accessibility_services | grep -q "$PKG" \
   && pass "Screen guard is on" || fail "Screen guard is on" "$(sh_ settings get secure enabled_accessibility_services)"
