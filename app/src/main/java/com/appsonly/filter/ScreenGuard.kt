@@ -233,7 +233,7 @@ class ScreenGuard : AccessibilityService() {
             // Play services: Google Account, Google settings, Find My Device, parental controls
             // (any Play services screen with "settings" in its name, e.g. googlesettings.ui.GoogleSettingsActivity),
             // and Help & Feedback, which shows web pages
-            Regex("""com\.google\.android\.gms\..*([Ss]ettings|\.kids\.|\.mdm\.|\.googlehelp\.|\.feedback\.)"""),
+            Regex("""com\.google\.android\.gms\..*[Ss]ettings|com\.google\.android\.gms(\.[^.]+)*\.(kids|mdm|googlehelp|feedback)\."""),
         )
 
         /**
