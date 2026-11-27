@@ -324,7 +324,11 @@ net_probe() { # what kind(url|tcp) [extra am args] -> prints "ok ..." or "error 
   done
   echo "${r:-error no answer}"
 }
-net_ok()      { local n=$1; shift; local r; r=$(net_probe "$@"); case "$r" in ok*) pass "$n ($r)";; *) fail "$n" "$r";; esac; }
+# An allowed site gets one more try only when the probe app gave no answer at all (it was
+# just updated and restarted, so its first start can be slow). A real block still fails.
+net_ok()      { local n=$1; shift; local r; r=$(net_probe "$@")
+  if [ "$r" = "error no answer" ]; then echo "  no answer from the probe app, trying once more"; sleep 5; r=$(net_probe "$@"); [ "${r%% *}" = ok ] && r="$r, on the second try"; fi
+  case "$r" in ok*) pass "$n ($r)";; *) fail "$n" "$r";; esac; }
 net_refused() { local n=$1; shift; local r; r=$(net_probe "$@"); case "$r" in error*) pass "$n (${r:0:80})";; *) fail "$n" "it worked: $r";; esac; }
 
 net_ok "Allowed app still reaches a site on its list" "https://www.googleapis.com/" url
